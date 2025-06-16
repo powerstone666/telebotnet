@@ -49,10 +49,10 @@ export function NavMenu() {
                 tooltip={{ children: item.label, className: "text-xs" }}
                 className="justify-start"
               >
-                <>
+                <span>
                   <item.icon />
                   <span>{item.label}</span>
-                </>
+                </span>
               </SidebarMenuButton>
             </Link>
           </SidebarMenuItem>
@@ -61,3 +61,4 @@ export function NavMenu() {
     </SidebarMenu>
   );
 }
+
