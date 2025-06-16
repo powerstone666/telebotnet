@@ -11,12 +11,12 @@ export interface BotInfo {
 }
 
 export interface StoredToken {
-  id: string; 
+  id: string;
   token: string;
   botInfo?: BotInfo;
   webhookStatus: 'set' | 'unset' | 'failed' | 'unknown' | 'checking';
-  lastWebhookSetAttempt?: string; 
-  lastActivity?: string; 
+  lastWebhookSetAttempt?: string;
+  lastActivity?: string;
   isCurrentWebhook?: boolean;
 }
 
@@ -32,7 +32,7 @@ export interface TelegramUser {
 
 export interface TelegramChatPermissions {
   can_send_messages?: boolean;
-  can_send_media_messages?: boolean; 
+  can_send_media_messages?: boolean;
   can_send_polls?: boolean;
   can_send_other_messages?: boolean;
   can_add_web_page_previews?: boolean;
@@ -47,12 +47,19 @@ export interface TelegramChat {
   type: 'private' | 'group' | 'supergroup' | 'channel';
   title?: string;
   username?: string;
-  first_name?: string;
-  last_name?: string;
+  first_name?: string; // For private chats
+  last_name?: string; // For private chats
   is_forum?: boolean;
   description?: string;
   invite_link?: string;
   permissions?: TelegramChatPermissions;
+  photo?: { // ChatPhoto
+    small_file_id: string;
+    small_file_unique_id: string;
+    big_file_id: string;
+    big_file_unique_id: string;
+  };
+  // other fields like pinned_message, slow_mode_delay etc. can be added
 }
 
 
@@ -77,9 +84,9 @@ export interface TelegramMessageEntity {
     | 'custom_emoji';
   offset: number;
   length: number;
-  url?: string; 
-  user?: TelegramUser; 
-  language?: string; 
+  url?: string;
+  user?: TelegramUser;
+  language?: string;
   custom_emoji_id?: string;
 }
 
@@ -115,8 +122,8 @@ export interface TelegramVideo {
 
 export interface TelegramMessage {
   message_id: number;
-  from?: TelegramUser; 
-  sender_chat?: TelegramChat; 
+  from?: TelegramUser;
+  sender_chat?: TelegramChat;
   date: number; // Unix time
   chat: TelegramChat;
   forward_from?: TelegramUser;
@@ -127,7 +134,7 @@ export interface TelegramMessage {
   forward_date?: number;
   is_topic_message?: boolean;
   is_automatic_forward?: boolean;
-  reply_to_message?: TelegramMessage; 
+  reply_to_message?: TelegramMessage;
   via_bot?: TelegramUser;
   edit_date?: number;
   has_protected_content?: boolean;
@@ -140,10 +147,10 @@ export interface TelegramMessage {
   video?: TelegramVideo;
   caption?: string;
   caption_entities?: TelegramMessageEntity[];
-  
+
   // Custom fields for UI
   sourceTokenId?: string; // ID of the StoredToken
-  botUsername?: string; 
+  botUsername?: string;
 }
 
 export interface TelegramUpdate {
@@ -169,14 +176,14 @@ export interface WebhookInfo {
 export interface SendMessageFormData {
   chatId: string;
   text: string;
-  tokenId: string; 
+  tokenId: string;
   parseMode?: 'MarkdownV2' | 'HTML' | 'Markdown';
   replyToMessageId?: string;
 }
 
 export interface WebhookOperationParams {
-  tokenIds: string[]; 
-  webhookUrl?: string; 
+  tokenIds: string[];
+  webhookUrl?: string;
 }
 
 export interface GetUpdatesParams {
@@ -187,4 +194,106 @@ export interface ApiResult<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+// Types for Chat/User Info Page
+export type ChatMemberStatus =
+  | 'creator'
+  | 'administrator'
+  | 'member'
+  | 'restricted'
+  | 'left'
+  | 'kicked';
+
+export interface ChatAdministratorRights {
+  is_anonymous: boolean;
+  can_manage_chat: boolean;
+  can_delete_messages: boolean;
+  can_manage_video_chats: boolean;
+  can_restrict_members: boolean;
+  can_promote_members: boolean;
+  can_change_info: boolean;
+  can_invite_users: boolean;
+  can_post_messages?: boolean;
+  can_edit_messages?: boolean;
+  can_pin_messages?: boolean;
+  can_manage_topics?: boolean;
+}
+
+export interface BaseChatMember {
+  user: TelegramUser;
+  status: ChatMemberStatus;
+}
+
+export interface ChatMemberOwner extends BaseChatMember {
+  status: 'creator';
+  is_anonymous: boolean;
+  custom_title?: string;
+}
+
+export interface ChatMemberAdministrator extends BaseChatMember {
+  status: 'administrator';
+  can_be_edited: boolean;
+  // Includes all fields from ChatAdministratorRights
+  is_anonymous: boolean;
+  can_manage_chat: boolean;
+  can_delete_messages: boolean;
+  can_manage_video_chats: boolean;
+  can_restrict_members: boolean;
+  can_promote_members: boolean;
+  can_change_info: boolean;
+  can_invite_users: boolean;
+  can_post_messages?: boolean;
+  can_edit_messages?: boolean;
+  can_pin_messages?: boolean;
+  can_manage_topics?: boolean;
+  custom_title?: string;
+}
+
+export interface ChatMemberMember extends BaseChatMember {
+  status: 'member';
+}
+
+export interface ChatMemberRestricted extends BaseChatMember {
+  status: 'restricted';
+  is_member: boolean;
+  can_send_messages: boolean;
+  can_send_audios: boolean;
+  can_send_documents: boolean;
+  can_send_photos: boolean;
+  can_send_videos: boolean;
+  can_send_video_notes: boolean;
+  can_send_voice_notes: boolean;
+  can_send_polls: boolean;
+  can_send_other_messages: boolean;
+  can_add_web_page_previews: boolean;
+  can_change_info: boolean;
+  can_invite_users: boolean;
+  can_pin_messages: boolean;
+  can_manage_topics: boolean;
+  until_date: number; // Unix time
+}
+
+export interface ChatMemberLeft extends BaseChatMember {
+  status: 'left';
+}
+
+export interface ChatMemberBanned extends BaseChatMember {
+  status: 'kicked';
+  until_date: number; // Unix time when the user will be unbanned
+}
+
+export type ChatMember =
+  | ChatMemberOwner
+  | ChatMemberAdministrator
+  | ChatMemberMember
+  | ChatMemberRestricted
+  | ChatMemberLeft
+  | ChatMemberBanned;
+
+export interface ChatUserInfoFormData {
+  tokenId: string;
+  targetId: string;
+  secondaryId?: string; // e.g. User ID for getChatMember
+  operation: 'getChat' | 'getChatMember' | 'getChatAdministrators';
 }

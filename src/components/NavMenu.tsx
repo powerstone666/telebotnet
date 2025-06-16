@@ -13,6 +13,7 @@ import {
   Activity,
   KeyRound,
   Group,
+  Info, // Added Info icon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -31,6 +32,7 @@ const navItems = [
   { href: '/dashboard/users', label: 'Users', icon: Users },
   { href: '/dashboard/groups', label: 'Groups', icon: Group },
   { href: '/dashboard/send-message', label: 'Send Message', icon: Send },
+  { href: '/dashboard/chat-user-info', label: 'Chat/User Info', icon: Info }, // New item
 ];
 
 export function NavMenu() {
