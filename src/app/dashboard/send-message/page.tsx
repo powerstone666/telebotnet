@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -22,7 +23,7 @@ import { useStoredTokens } from '@/lib/localStorage';
 import type { SendMessageFormData } from '@/lib/types';
 import { sendMessageAction } from './actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, SendHorizonal } from "lucide-react";
+import { Loader2, SendHorizontal } from "lucide-react";
 import { useState } from "react";
 
 const sendMessageFormSchema = z.object({
@@ -182,7 +183,7 @@ export default function SendMessagePage() {
               
               <Button type="submit" disabled={isSending || tokens.length === 0} className="w-full">
                 {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <SendHorizonal className="mr-2 h-4 w-4" />
+                <SendHorizontal className="mr-2 h-4 w-4" />
                 Send Message
               </Button>
             </form>
