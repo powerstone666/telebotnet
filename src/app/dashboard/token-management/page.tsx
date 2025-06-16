@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -46,7 +47,7 @@ export default function TokenManagementPage() {
       if (botInfoResult.success && botInfoResult.data) {
         newBotInfo = botInfoResult.data;
       } else if (!suppressToast) {
-        toast({ title: `Refresh Error (${tokenToRefresh.botInfo?.username})`, description: `Failed to fetch bot info: ${botInfoResult.error}`, variant: "destructive" });
+        toast({ title: `Refresh Error (${tokenToRefresh.botInfo?.username || 'token'})`, description: `Failed to fetch bot info: ${botInfoResult.error}`, variant: "destructive" });
       }
 
       let webhookStatus: StoredToken['webhookStatus'] = tokenToRefresh.webhookStatus;
@@ -58,7 +59,7 @@ export default function TokenManagementPage() {
       } else {
         webhookStatus = 'failed';
          if (!suppressToast) {
-            toast({ title: `Refresh Error (${tokenToRefresh.botInfo?.username})`, description: `Failed to check webhook: ${webhookCheckResult.error}`, variant: "destructive" });
+            toast({ title: `Refresh Error (${tokenToRefresh.botInfo?.username || 'token'})`, description: `Failed to check webhook: ${webhookCheckResult.error}`, variant: "destructive" });
          }
       }
       
@@ -74,7 +75,7 @@ export default function TokenManagementPage() {
       }
     } catch (error) {
       if (!suppressToast) {
-        toast({ title: `Refresh Error (${tokenToRefresh.botInfo?.username})`, description: error instanceof Error ? error.message : 'Unknown error during refresh.', variant: "destructive" });
+        toast({ title: `Refresh Error (${tokenToRefresh.botInfo?.username || 'token'})`, description: error instanceof Error ? error.message : 'Unknown error during refresh.', variant: "destructive" });
       }
     } finally {
       setIsLoadingTokenMap(prev => ({ ...prev, [tokenToRefresh.id]: false }));
@@ -83,14 +84,16 @@ export default function TokenManagementPage() {
 
 
   useEffect(() => {
-    // Initial refresh of all tokens to get webhook status if unknown
-    tokens.forEach(token => {
-      if (token.webhookStatus === 'unknown' || token.webhookStatus === undefined) { // also check undefined for older stored tokens
-        refreshSingleTokenInfo(token, true); // Suppress toast for initial batch refresh
-      }
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoadingTokens]); // Run only when tokens are loaded initially
+    // Initial refresh of all tokens to get webhook status if unknown,
+    // once tokens are loaded.
+    if (!isLoadingTokens && tokens.length > 0) {
+        tokens.forEach(token => {
+        if (token.webhookStatus === 'unknown' || token.webhookStatus === undefined) { 
+            refreshSingleTokenInfo(token, true); // Suppress toast for initial batch refresh
+        }
+        });
+    }
+  }, [isLoadingTokens, tokens, refreshSingleTokenInfo]);
 
 
   useEffect(() => {
