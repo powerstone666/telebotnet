@@ -1,12 +1,28 @@
+
 "use server";
 
 import type { ApiResult, BotInfo, StoredToken, WebhookInfo } from "@/lib/types";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
 
-// This is a placeholder. In a real app, this would be dynamically determined
-// or configured via environment variables.
-const CURRENT_APP_WEBHOOK_URL = process.env.NEXT_PUBLIC_WEBHOOK_BASE_URL ? `${process.env.NEXT_PUBLIC_WEBHOOK_BASE_URL}/api/webhook` : "https://example.com/api/webhook";
+// Determine the application's base URL for constructing the webhook URL
+let appBaseUrl: string;
+
+if (process.env.NEXT_PUBLIC_WEBHOOK_BASE_URL) {
+  appBaseUrl = process.env.NEXT_PUBLIC_WEBHOOK_BASE_URL;
+} else if (process.env.APP_URL) { // Commonly provided by hosting environments like Firebase App Hosting
+  appBaseUrl = process.env.APP_URL;
+} else if (process.env.NODE_ENV === 'development') {
+  // Default for local development based on package.json script (dev port 9002)
+  // Ensure this matches your local dev setup if you change the port
+  appBaseUrl = 'http://localhost:9002';
+} else {
+  // Fallback if no specific URL can be determined in a non-development environment.
+  // It's crucial to set either NEXT_PUBLIC_WEBHOOK_BASE_URL or ensure APP_URL is available in your production environment.
+  appBaseUrl = 'https://[CONFIGURE_YOUR_APP_URL_IN_ENV]'; // Placeholder indicating configuration is needed
+}
+
+const CURRENT_APP_WEBHOOK_URL = `${appBaseUrl}/api/webhook`;
 
 
 export async function getBotInfoAction(token: string): Promise<ApiResult<BotInfo>> {
@@ -37,6 +53,8 @@ export async function checkWebhookAction(token: string): Promise<ApiResult<{ web
     const data = await response.json();
     if (data.ok) {
       const webhookInfo = data.result as WebhookInfo;
+      // Ensure comparison is consistent, e.g. by removing trailing slashes if they might appear inconsistently.
+      // For now, assuming URLs are clean.
       const isCurrentWebhook = webhookInfo.url === CURRENT_APP_WEBHOOK_URL;
       return { success: true, data: { webhookInfo: webhookInfo.url ? webhookInfo : null, isCurrentWebhook } };
     }
