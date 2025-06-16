@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback }_from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { TelegramMessage, StoredToken } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -125,9 +125,9 @@ export default function MessageLogPage() {
     try {
         const result = await downloadFileAction(token, fileId);
         if (result.success && result.data) {
-            const blob = new Blob([result.data], { type: result.mimeType || 'application/octet-stream' });
-            saveAs(blob, result.fileName || fileName);
-            toast({ title: "Download Complete", description: `${result.fileName || fileName} downloaded.`});
+            const blob = new Blob([result.data.data], { type: result.data.mimeType || 'application/octet-stream' });
+            saveAs(blob, result.data.fileName || fileName);
+            toast({ title: "Download Complete", description: `${result.data.fileName || fileName} downloaded.`});
         } else {
             toast({ title: "Download Failed", description: result.error || "Could not download file.", variant: "destructive"});
         }

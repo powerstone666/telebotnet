@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -41,17 +42,17 @@ export function NavMenu() {
         <SidebarGroupLabel>Menu</SidebarGroupLabel>
         {navItems.map((item) => (
           <SidebarMenuItem key={item.href}>
-            <Link href={item.href} passHref legacyBehavior>
+            <Link href={item.href}>
               <SidebarMenuButton
                 asChild
                 isActive={pathname.startsWith(item.href)}
                 tooltip={{ children: item.label, className: "text-xs" }}
                 className="justify-start"
               >
-                <a>
+                <>
                   <item.icon />
                   <span>{item.label}</span>
-                </a>
+                </>
               </SidebarMenuButton>
             </Link>
           </SidebarMenuItem>
