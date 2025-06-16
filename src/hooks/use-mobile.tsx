@@ -5,19 +5,17 @@ import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768
 
-export function useIsMobile(): boolean | undefined {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
-  const [hasMounted, setHasMounted] = React.useState(false);
+export function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = React.useState<boolean>(false); // Default to false (desktop)
 
   React.useEffect(() => {
-    setHasMounted(true); 
-
     const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
     
     const onChange = () => {
       setIsMobile(mql.matches);
     };
 
+    // Set the initial state on the client after mount
     setIsMobile(mql.matches);
 
     mql.addEventListener("change", onChange);
@@ -25,9 +23,5 @@ export function useIsMobile(): boolean | undefined {
     return () => mql.removeEventListener("change", onChange);
   }, []); 
 
-  if (!hasMounted) {
-    return undefined; // Return undefined on server and initial client render before effect runs
-  }
-
-  return isMobile; // Return the determined boolean value after mount
+  return isMobile;
 }

@@ -32,7 +32,7 @@ type SidebarContextValue = {
   setOpen: (open: boolean) => void
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
-  isMobile: boolean | undefined // Can be undefined initially
+  isMobile: boolean // Will now always be boolean
   toggleSidebar: () => void
 }
 
@@ -67,7 +67,7 @@ const SidebarProvider = React.forwardRef<
     },
     ref
   ) => {
-    const isMobileHookValue = useIsMobile(); // This can be boolean | undefined
+    const isMobileHookValue = useIsMobile(); // Returns boolean, defaults to false on server
 
     const [openMobile, setOpenMobile] = React.useState(false)
     const [_open, _setOpen] = React.useState(defaultOpen)
@@ -87,8 +87,7 @@ const SidebarProvider = React.forwardRef<
     )
 
     const toggleSidebar = React.useCallback(() => {
-      // Check against true explicitly because isMobileHookValue can be undefined
-      return isMobileHookValue === true 
+      return isMobileHookValue
         ? setOpenMobile((currentOpen) => !currentOpen)
         : setOpen((currentOpen) => !currentOpen)
     }, [isMobileHookValue, setOpen, setOpenMobile])
@@ -168,12 +167,8 @@ const Sidebar = React.forwardRef<
     ref
   ) => {
     const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
-
-    // If isMobile is undefined, it means we haven't determined client screen size yet.
-    // Render null to ensure server and initial client render are consistent.
-    if (isMobile === undefined) {
-      return null; 
-    }
+    // isMobile is now boolean (false on server, actual on client after mount)
+    // No need for `if (isMobile === undefined) return null;` anymore.
 
     if (collapsible === "none") {
       return (
@@ -190,7 +185,7 @@ const Sidebar = React.forwardRef<
       )
     }
     
-    if (isMobile) { // isMobile is now confirmed boolean
+    if (isMobile) { 
       return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
           <SheetContent
@@ -210,6 +205,7 @@ const Sidebar = React.forwardRef<
       )
     }
 
+    // Desktop view (isMobile is false)
     return (
       <div
         ref={ref}
@@ -578,7 +574,7 @@ const SidebarMenuButton = React.forwardRef<
         <TooltipContent
           side="right"
           align="center"
-          hidden={state !== "collapsed" || isMobile === true || isMobile === undefined} // Hide if not collapsed, or if mobile state determined or undetermined
+          hidden={state !== "collapsed" || isMobile === true} 
           {...tooltip}
         />
       </Tooltip>

@@ -9,24 +9,16 @@ import {
   SidebarInset,
   SidebarTrigger,
   SidebarRail,
-  useSidebar,
+  useSidebar, // Keep useSidebar if other parts of this component need it directly
 } from "@/components/ui/sidebar";
 import { AppLogo } from "@/components/AppLogo";
 import { NavMenu } from "@/components/NavMenu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2 } from "lucide-react";
+// Loader2 might not be needed if we don't show a specific loading state here for isMobile anymore
 
 export function DashboardClientLayout({ children }: { children: React.ReactNode }) {
-  const { isMobile } = useSidebar();
-
-  if (isMobile === undefined) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="ml-2 text-muted-foreground">Loading layout...</p>
-      </div>
-    );
-  }
+  // const { isMobile } = useSidebar(); // isMobile from context will be boolean (false on server)
+  // No loader needed here based on isMobile being undefined, as it will always be boolean.
 
   return (
     <>
