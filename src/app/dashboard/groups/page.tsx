@@ -68,7 +68,8 @@ export default function GroupsPage() {
               if (!existingGroup) {
                 return [...prevGroups, message.chat];
               }
-              return prevGroups;
+               // Optionally update existing group data if message.chat has newer info
+              return prevGroups.map(g => g.id === message.chat.id ? {...g, ...message.chat} : g);
             });
           }
         } catch (e) { console.error("Error processing group from storage event", e); }
@@ -81,8 +82,13 @@ export default function GroupsPage() {
 
   const getPermissionString = (permissions?: TelegramChatPermissions): string => {
     if (!permissions) return 'N/A';
-    const count = Object.values(permissions).filter(p => p === true).length;
-    return `${count} permissions active`;
+    const activePermissions = Object.entries(permissions)
+      .filter(([_, value]) => value === true)
+      .map(([key]) => key.replace('can_', '').replace(/_/g, ' '));
+    
+    if (activePermissions.length === 0) return 'No specific permissions';
+    if (activePermissions.length > 3) return `${activePermissions.length} permissions active`;
+    return activePermissions.join(', ');
   };
 
   const ChatTypeIcon = ({type}: {type: TelegramChat['type']}) => {
@@ -106,7 +112,7 @@ export default function GroupsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Encountered Groups/Channels {hasMounted ? `(${groups.length})` : ''}</CardTitle>
-          <CardDescription>List of groups and channels your bots are part of or have received messages from.</CardDescription>
+          <CardDescription>List of groups and channels your bots are part of or have received messages from. Updated via "Get Updates" or webhook events.</CardDescription>
         </CardHeader>
         <CardContent>
           {!hasMounted ? (
@@ -115,7 +121,7 @@ export default function GroupsPage() {
               <p className="ml-2 text-muted-foreground">Loading groups...</p>
             </div>
           ) : groups.length === 0 ? (
-            <p className="text-muted-foreground text-center py-10">No groups or channels recorded yet. Ensure your bots are in groups/channels or receive messages from them.</p>
+            <p className="text-muted-foreground text-center py-10">No groups or channels recorded yet. Use "Get Updates" or ensure your bots are in groups/channels or receive messages from them.</p>
           ) : (
             <ScrollArea className="h-[600px]">
               <Table>
@@ -126,7 +132,7 @@ export default function GroupsPage() {
                     <TableHead>Chat ID</TableHead>
                     <TableHead>Username</TableHead>
                     <TableHead>Invite Link</TableHead>
-                    <TableHead>Permissions</TableHead>
+                    <TableHead>Permissions Summary</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -134,7 +140,7 @@ export default function GroupsPage() {
                     <TableRow key={chat.id}>
                       <TableCell className="capitalize flex items-center gap-2">
                         <ChatTypeIcon type={chat.type}/>
-                        {chat.type}
+                        {chat.type.replace('_', ' ')}
                       </TableCell>
                       <TableCell className="font-medium">{chat.title || 'N/A'}</TableCell>
                       <TableCell>{chat.id}</TableCell>
@@ -147,7 +153,9 @@ export default function GroupsPage() {
                         ) : 'N/A'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{getPermissionString(chat.permissions)}</Badge>
+                        <Badge variant="outline" className="whitespace-normal text-xs">
+                           {getPermissionString(chat.permissions)}
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}

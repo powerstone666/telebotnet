@@ -32,7 +32,7 @@ const navItems = [
   { href: '/dashboard/users', label: 'Users', icon: Users },
   { href: '/dashboard/groups', label: 'Groups', icon: Group },
   { href: '/dashboard/send-message', label: 'Send Message', icon: Send },
-  { href: '/dashboard/chat-user-info', label: 'Chat/User Info', icon: Info }, // New item
+  { href: '/dashboard/chat-user-info', label: 'Chat/User Info', icon: Info }, 
 ];
 
 export function NavMenu() {

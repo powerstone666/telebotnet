@@ -12,9 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { StoredToken } from "@/lib/types";
-import { Trash2, RefreshCw, Zap, ZapOff, AlertTriangle, HelpCircle, CheckCircle2 } from "lucide-react";
+import { Trash2, RefreshCw, Zap, ZapOff, AlertTriangle, HelpCircle, CheckCircle2, ExternalLink, CircleSlash } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { useState, useEffect } from 'react';
 
 interface TokenTableProps {
@@ -29,22 +29,39 @@ const maskToken = (token: string) => {
   return `${token.substring(0, 6)}...${token.substring(token.length - 4)}`;
 };
 
-const WebhookStatusIndicator: React.FC<{ status: StoredToken['webhookStatus'], isCurrent: boolean | undefined }> = ({ status, isCurrent }) => {
+const WebhookStatusIndicator: React.FC<{ status: StoredToken['webhookStatus'], isCurrent: boolean | undefined, webhookUrl?: string | null }> = ({ status, isCurrent, webhookUrl }) => {
+  let tooltipContent = "Webhook status";
+  let badgeContent: React.ReactNode;
+
   switch (status) {
     case 'set':
-      return isCurrent ? 
-        <Badge variant="default" className="bg-green-500 hover:bg-green-600"><CheckCircle2 className="mr-1 h-3 w-3" />Set (Active)</Badge> :
-        <Badge variant="secondary"><Zap className="mr-1 h-3 w-3" />Set (Other)</Badge>;
+      if (isCurrent) {
+        badgeContent = <><CheckCircle2 className="mr-1 h-3 w-3" />Set (This App)</>;
+        tooltipContent = `Webhook is set to this application's endpoint: ${webhookUrl || 'N/A'}`;
+      } else {
+        badgeContent = <><ExternalLink className="mr-1 h-3 w-3" />Set (External)</>;
+        tooltipContent = `Webhook is set to an external URL: ${webhookUrl || 'N/A'}. This app won't receive updates.`;
+      }
+      return <Tooltip><TooltipTrigger asChild><Badge variant={isCurrent ? "default" : "secondary"} className={isCurrent ? "bg-green-500 hover:bg-green-600" : ""}>{badgeContent}</Badge></TooltipTrigger><TooltipContent><p>{tooltipContent}</p></TooltipContent></Tooltip>;
     case 'unset':
-      return <Badge variant="outline"><ZapOff className="mr-1 h-3 w-3" />Unset</Badge>;
+      badgeContent = <><ZapOff className="mr-1 h-3 w-3" />Unset</>;
+      tooltipContent = "Webhook is not set for this bot.";
+      return <Tooltip><TooltipTrigger asChild><Badge variant="outline">{badgeContent}</Badge></TooltipTrigger><TooltipContent><p>{tooltipContent}</p></TooltipContent></Tooltip>;
     case 'failed':
-      return <Badge variant="destructive"><AlertTriangle className="mr-1 h-3 w-3" />Failed</Badge>;
+      badgeContent = <><AlertTriangle className="mr-1 h-3 w-3" />Check Failed</>;
+      tooltipContent = "Failed to retrieve webhook information.";
+      return <Tooltip><TooltipTrigger asChild><Badge variant="destructive">{badgeContent}</Badge></TooltipTrigger><TooltipContent><p>{tooltipContent}</p></TooltipContent></Tooltip>;
     case 'checking':
-      return <Badge variant="outline">Checking...</Badge>;
-    default:
-      return <Badge variant="outline"><HelpCircle className="mr-1 h-3 w-3" />Unknown</Badge>;
+      badgeContent = <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Checking...</>;
+      tooltipContent = "Currently checking webhook status...";
+      return <Badge variant="outline">{badgeContent}</Badge>; // No tooltip needed for loading
+    default: // unknown or undefined
+      badgeContent = <><HelpCircle className="mr-1 h-3 w-3" />Unknown</>;
+      tooltipContent = "Webhook status has not been determined yet. Try refreshing.";
+      return <Tooltip><TooltipTrigger asChild><Badge variant="outline">{badgeContent}</Badge></TooltipTrigger><TooltipContent><p>{tooltipContent}</p></TooltipContent></Tooltip>;
   }
 };
+
 
 const FormattedLastActivityCell: React.FC<{ isoDateString?: string }> = ({ isoDateString }) => {
   const [formattedDate, setFormattedDate] = useState<string | null>(null);
@@ -52,7 +69,12 @@ const FormattedLastActivityCell: React.FC<{ isoDateString?: string }> = ({ isoDa
   useEffect(() => {
     if (isoDateString) {
       try {
-        setFormattedDate(format(parseISO(isoDateString), 'PP pp'));
+        const date = parseISO(isoDateString);
+        if (isValid(date)) {
+          setFormattedDate(format(date, 'PP pp'));
+        } else {
+          setFormattedDate('Invalid date');
+        }
       } catch (error) {
         console.error("Error formatting last activity date:", error);
         setFormattedDate('Invalid date');
@@ -88,7 +110,7 @@ export function TokenTable({ tokens, onDeleteToken, onRefreshInfo, isLoadingToke
   }
 
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={300}>
       <div className="mt-6 rounded-lg border shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
@@ -96,31 +118,33 @@ export function TokenTable({ tokens, onDeleteToken, onRefreshInfo, isLoadingToke
               <TableHead className="font-semibold">Bot Username</TableHead>
               <TableHead className="font-semibold">Token (Masked)</TableHead>
               <TableHead className="font-semibold">Webhook Status</TableHead>
-              <TableHead className="font-semibold">Last Activity</TableHead>
+              <TableHead className="font-semibold">Last Activity/Refresh</TableHead>
               <TableHead className="text-right font-semibold">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {tokens.map((token) => (
-              <TableRow key={token.id}>
-                <TableCell className="font-medium">{token.botInfo?.username || 'N/A'}</TableCell>
+              <TableRow key={token.id} className={token.botInfo === null ? "opacity-70" : ""}>
+                <TableCell className="font-medium">
+                    {token.botInfo?.username || (token.botInfo === null ? <span className="text-destructive italic">Invalid Token?</span> : 'N/A')}
+                </TableCell>
                 <TableCell>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="cursor-help">{maskToken(token.token)}</span>
+                      <span className="cursor-help font-mono text-xs">{maskToken(token.token)}</span>
                     </TooltipTrigger>
-                    <TooltipContent>
+                    <TooltipContent side="top">
                       <p>{token.token}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TableCell>
                 <TableCell>
-                  <WebhookStatusIndicator status={token.webhookStatus} isCurrent={token.isCurrentWebhook} />
+                  <WebhookStatusIndicator status={token.webhookStatus} isCurrent={token.isCurrentWebhook} webhookUrl={token.botInfo ? (token.botInfo as any).webhook_url : undefined /* Pass actual webhook URL if available */} />
                 </TableCell>
                 <TableCell>
                   <FormattedLastActivityCell isoDateString={token.lastActivity} />
                 </TableCell>
-                <TableCell className="text-right space-x-2">
+                <TableCell className="text-right space-x-1">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -133,7 +157,7 @@ export function TokenTable({ tokens, onDeleteToken, onRefreshInfo, isLoadingToke
                         <RefreshCw className={`h-4 w-4 ${isLoadingTokenMap[token.id] ? 'animate-spin' : ''}`} />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>
+                    <TooltipContent side="top">
                       <p>Refresh Bot Info & Webhook Status</p>
                     </TooltipContent>
                   </Tooltip>
@@ -149,7 +173,7 @@ export function TokenTable({ tokens, onDeleteToken, onRefreshInfo, isLoadingToke
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>
+                    <TooltipContent side="top">
                       <p>Delete Token</p>
                     </TooltipContent>
                   </Tooltip>

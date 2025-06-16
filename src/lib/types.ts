@@ -32,7 +32,13 @@ export interface TelegramUser {
 
 export interface TelegramChatPermissions {
   can_send_messages?: boolean;
-  can_send_media_messages?: boolean;
+  can_send_media_messages?: boolean; // Use this field for specific media types if available
+  can_send_audios?: boolean;
+  can_send_documents?: boolean;
+  can_send_photos?: boolean;
+  can_send_videos?: boolean;
+  can_send_video_notes?: boolean;
+  can_send_voice_notes?: boolean;
   can_send_polls?: boolean;
   can_send_other_messages?: boolean;
   can_add_web_page_previews?: boolean;
@@ -159,6 +165,17 @@ export interface TelegramUpdate {
   edited_message?: TelegramMessage;
   channel_post?: TelegramMessage;
   edited_channel_post?: TelegramMessage;
+  // Add other update types if needed:
+  // inline_query?: InlineQuery;
+  // chosen_inline_result?: ChosenInlineResult;
+  // callback_query?: CallbackQuery;
+  // shipping_query?: ShippingQuery;
+  // pre_checkout_query?: PreCheckoutQuery;
+  // poll?: Poll;
+  // poll_answer?: PollAnswer;
+  // my_chat_member?: ChatMemberUpdated;
+  // chat_member?: ChatMemberUpdated;
+  // chat_join_request?: ChatJoinRequest;
 }
 
 export interface WebhookInfo {

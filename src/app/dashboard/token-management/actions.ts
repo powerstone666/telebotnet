@@ -6,23 +6,32 @@ import type { ApiResult, BotInfo, StoredToken, WebhookInfo } from "@/lib/types";
 const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
 
 // Determine the application's base URL for constructing the webhook URL
-let appBaseUrl: string;
+function getCurrentAppWebhookUrl(): string {
+  let appBaseUrl: string;
 
-if (process.env.NEXT_PUBLIC_WEBHOOK_BASE_URL) {
-  appBaseUrl = process.env.NEXT_PUBLIC_WEBHOOK_BASE_URL;
-} else if (process.env.APP_URL) { // Commonly provided by hosting environments like Firebase App Hosting
-  appBaseUrl = process.env.APP_URL;
-} else if (process.env.NODE_ENV === 'development') {
-  // Default for local development based on package.json script (dev port 9002)
-  // Ensure this matches your local dev setup if you change the port
-  appBaseUrl = 'http://localhost:9002';
-} else {
-  // Fallback if no specific URL can be determined in a non-development environment.
-  // It's crucial to set either NEXT_PUBLIC_WEBHOOK_BASE_URL or ensure APP_URL is available in your production environment.
-  appBaseUrl = 'https://[CONFIGURE_YOUR_APP_URL_IN_ENV]'; // Placeholder indicating configuration is needed
+  if (process.env.NEXT_PUBLIC_WEBHOOK_BASE_URL) {
+    appBaseUrl = process.env.NEXT_PUBLIC_WEBHOOK_BASE_URL;
+  } else if (process.env.APP_URL) { // Commonly provided by hosting environments like Firebase App Hosting
+    appBaseUrl = process.env.APP_URL;
+  } else if (process.env.NODE_ENV === 'development') {
+    // Default for local development. Ensure this matches your local dev setup.
+    // Check if running in Gitpod or similar environment that sets a public URL
+    if (process.env.GITPOD_WORKSPACE_URL) {
+        const gitpodUrl = new URL(process.env.GITPOD_WORKSPACE_URL);
+        appBaseUrl = `https://${process.env.PORT || '9002'}-${gitpodUrl.hostname}`;
+    } else {
+        appBaseUrl = `http://localhost:${process.env.PORT || '9002'}`;
+    }
+  } else {
+    // Fallback if no specific URL can be determined in a non-development environment.
+    // It's crucial to set either NEXT_PUBLIC_WEBHOOK_BASE_URL or ensure APP_URL is available.
+    console.warn("Warning: Webhook base URL could not be determined. Falling back to placeholder. Please set NEXT_PUBLIC_WEBHOOK_BASE_URL or ensure APP_URL is available in your environment.");
+    appBaseUrl = 'https://[CONFIGURE_YOUR_APP_URL_IN_ENV]'; // Placeholder indicating configuration is needed
+  }
+  // Ensure it ends with /api/webhook
+  const cleanBaseUrl = appBaseUrl.endsWith('/') ? appBaseUrl.slice(0, -1) : appBaseUrl;
+  return `${cleanBaseUrl}/api/webhook`;
 }
-
-const CURRENT_APP_WEBHOOK_URL = `${appBaseUrl}/api/webhook`;
 
 
 export async function getBotInfoAction(token: string): Promise<ApiResult<BotInfo>> {
@@ -53,9 +62,13 @@ export async function checkWebhookAction(token: string): Promise<ApiResult<{ web
     const data = await response.json();
     if (data.ok) {
       const webhookInfo = data.result as WebhookInfo;
-      // Ensure comparison is consistent, e.g. by removing trailing slashes if they might appear inconsistently.
-      // For now, assuming URLs are clean.
-      const isCurrentWebhook = webhookInfo.url === CURRENT_APP_WEBHOOK_URL;
+      const currentAppWebhook = getCurrentAppWebhookUrl();
+      
+      // Normalize URLs for comparison (e.g., remove trailing slashes if they might appear inconsistently)
+      const normalizeUrl = (url: string | undefined) => url ? url.replace(/\/$/, "") : "";
+      
+      const isCurrentWebhook = normalizeUrl(webhookInfo.url) === normalizeUrl(currentAppWebhook);
+      
       return { success: true, data: { webhookInfo: webhookInfo.url ? webhookInfo : null, isCurrentWebhook } };
     }
     return { success: false, error: "Failed to parse webhook info." };

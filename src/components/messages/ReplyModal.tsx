@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -8,6 +9,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,8 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { StoredToken, TelegramMessage } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { sendMessageAction } from '@/app/dashboard/send-message/actions'; // Re-use send message action
-import { Loader2 } from 'lucide-react';
+import { sendMessageAction } from '@/app/dashboard/send-message/actions';
+import { Loader2, SendHorizonal } from "lucide-react"; // Corrected icon name
 
 interface ReplyModalProps {
   message: TelegramMessage;
@@ -27,22 +29,24 @@ interface ReplyModalProps {
 
 export function ReplyModal({ message, allTokens, isOpen, onClose }: ReplyModalProps) {
   const [replyText, setReplyText] = useState("");
-  const [selectedTokenId, setSelectedTokenId] = useState<string | undefined>(message.sourceTokenId);
+  const [selectedTokenId, setSelectedTokenId] = useState<string | undefined>(undefined);
   const [isSending, setIsSending] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    // If the original message's source token is available, pre-select it.
-    // Otherwise, if there's only one token, select it.
-    // Otherwise, prompt user to select.
-    if (message.sourceTokenId && allTokens.find(t => t.id === message.sourceTokenId)) {
-      setSelectedTokenId(message.sourceTokenId);
-    } else if (allTokens.length === 1) {
-      setSelectedTokenId(allTokens[0].id);
-    } else {
-      setSelectedTokenId(undefined); // Force user selection if multiple tokens and no source token
+    if (isOpen) {
+      // Reset reply text when modal opens for a new message
+      setReplyText("");
+      // Pre-select token logic
+      if (message.sourceTokenId && allTokens.find(t => t.id === message.sourceTokenId)) {
+        setSelectedTokenId(message.sourceTokenId);
+      } else if (allTokens.length === 1) {
+        setSelectedTokenId(allTokens[0].id);
+      } else {
+        setSelectedTokenId(undefined); // Force user selection
+      }
     }
-  }, [message, allTokens]);
+  }, [isOpen, message, allTokens]);
 
   const handleSubmitReply = async () => {
     if (!replyText.trim()) {
@@ -66,19 +70,20 @@ export function ReplyModal({ message, allTokens, isOpen, onClose }: ReplyModalPr
       chatId: message.chat.id.toString(),
       text: replyText,
       replyToMessageId: message.message_id.toString(),
+      // parseMode can be added here if needed
     });
     setIsSending(false);
 
     if (result.success) {
       toast({ title: "Reply Sent", description: "Your reply has been sent successfully." });
-      setReplyText("");
-      onClose();
+      onClose(); // Close modal on success
     } else {
       toast({ title: "Failed to Send Reply", description: result.error, variant: "destructive" });
     }
   };
 
   const senderName = message.from?.first_name ? `${message.from.first_name} ${message.from.last_name || ''}`.trim() : (message.from?.username || 'Unknown User');
+  const originalMessagePreview = message.text || (message.caption ? `[Media with caption: ${message.caption}]` : '[Media Message]');
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -86,9 +91,9 @@ export function ReplyModal({ message, allTokens, isOpen, onClose }: ReplyModalPr
         <DialogHeader>
           <DialogTitle>Reply to {senderName}</DialogTitle>
           <DialogDescription>
-            Replying in chat: {message.chat.title || message.chat.username || message.chat.id}.
-            <blockquote className="mt-2 p-2 border-l-4 bg-muted/50 rounded-r-md">
-              <p className="text-xs text-muted-foreground italic truncate">"{message.text || (message.caption ? `Caption: ${message.caption}` : '[Media Message]')}"</p>
+            In chat: {message.chat.title || message.chat.username || message.chat.id}.
+            <blockquote className="mt-2 p-2 border-l-4 bg-muted/50 rounded-r-md text-xs text-muted-foreground italic">
+              <p className="truncate">Original: "{originalMessagePreview}"</p>
             </blockquote>
           </DialogDescription>
         </DialogHeader>
@@ -101,31 +106,38 @@ export function ReplyModal({ message, allTokens, isOpen, onClose }: ReplyModalPr
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}
               rows={4}
+              className="resize-y"
             />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="reply-token-select">Send with Bot</Label>
-            <Select value={selectedTokenId} onValueChange={setSelectedTokenId} disabled={allTokens.length <=1 && !!message.sourceTokenId}>
+            <Select 
+              value={selectedTokenId} 
+              onValueChange={setSelectedTokenId}
+              disabled={allTokens.length === 0}
+            >
               <SelectTrigger id="reply-token-select" className="w-full">
-                <SelectValue placeholder="Select a bot token..." />
+                <SelectValue placeholder={allTokens.length === 0 ? "No tokens available" : "Select a bot token..."} />
               </SelectTrigger>
               <SelectContent>
                 {allTokens.map(token => (
                   <SelectItem key={token.id} value={token.id}>
-                    {token.botInfo?.username || `Token ending ...${token.token.slice(-4)}`}
+                    {token.botInfo?.username || `Token ending ...${token.token.slice(-6)}`}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {!selectedTokenId && <p className="text-xs text-destructive">Please select a token.</p>}
+            {!selectedTokenId && allTokens.length > 0 && <p className="text-xs text-destructive">Please select a token.</p>}
           </div>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={isSending}>
-            Cancel
-          </Button>
+          <DialogClose asChild>
+            <Button type="button" variant="outline" disabled={isSending}>
+              Cancel
+            </Button>
+          </DialogClose>
           <Button type="submit" onClick={handleSubmitReply} disabled={isSending || !replyText.trim() || !selectedTokenId}>
-            {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SendHorizonal className="mr-2 h-4 w-4" />}
             Send Reply
           </Button>
         </DialogFooter>

@@ -10,21 +10,27 @@ import { ReplyModal } from '@/components/messages/ReplyModal';
 import { useToast } from '@/hooks/use-toast';
 import { useStoredTokens } from '@/lib/localStorage';
 import { downloadFileAction } from './actions';
-import { saveAs } from 'file-saver';
+import { saveAs } from 'file-saver'; // For client-side saving
 import { Loader2 } from 'lucide-react';
 
 // Helper hook for sessionStorage
-function useSessionStorage<T>(key: string, initialValue: T) {
-  const [storedValue, setStoredValue] = useState<T>(initialValue);
+function useSessionStorageMessages(key: string, initialValue: TelegramMessage[]) {
+  const [storedValue, setStoredValue] = useState<TelegramMessage[]>(initialValue);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
         const item = window.sessionStorage.getItem(key);
         if (item) {
-          setStoredValue(JSON.parse(item));
+          const parsedItems = JSON.parse(item);
+          if (Array.isArray(parsedItems)) {
+            // Sort messages by date descending, new messages usually come first
+            setStoredValue(parsedItems.sort((a, b) => b.date - a.date));
+          } else {
+             setStoredValue(initialValue);
+          }
         } else {
-          setStoredValue(initialValue); // Ensure initialValue is set if item is null
+          setStoredValue(initialValue);
         }
       } catch (error) {
         console.error(`Error reading ${key} from sessionStorage:`, error);
@@ -33,13 +39,22 @@ function useSessionStorage<T>(key: string, initialValue: T) {
     }
   }, [key, initialValue]);
 
-  const setValue = (value: T | ((val: T) => T)) => {
+  const setValue = (value: TelegramMessage[] | ((val: TelegramMessage[]) => TelegramMessage[])) => {
     try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.setItem(key, JSON.stringify(valueToStore));
-      }
+      const valueToStoreCallback = typeof value === 'function' ? value : () => value;
+      setStoredValue(currentStoredValue => {
+        const newUnsortedMessages = valueToStoreCallback(currentStoredValue);
+        // Keep unique messages, sort, and cap at 200
+        const messageMap = new Map(newUnsortedMessages.map(msg => [`${msg.chat.id}-${msg.message_id}`, msg]));
+        const uniqueSortedMessages = Array.from(messageMap.values())
+                                        .sort((a, b) => b.date - a.date)
+                                        .slice(0, 200);
+        
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(key, JSON.stringify(uniqueSortedMessages));
+        }
+        return uniqueSortedMessages;
+      });
     } catch (error) {
       console.error(`Error setting ${key} in sessionStorage:`, error);
     }
@@ -49,8 +64,8 @@ function useSessionStorage<T>(key: string, initialValue: T) {
 
 
 export default function MessageLogPage() {
-  const [messages, setMessages] = useSessionStorage<TelegramMessage[]>('telematrix_webhook_messages', []);
-  const { tokens } = useStoredTokens();
+  const [messages, setMessages] = useSessionStorageMessages('telematrix_webhook_messages', []);
+  const { tokens } = useStoredTokens(); // For finding token for reply/download
   const [replyingToMessage, setReplyingToMessage] = useState<TelegramMessage | null>(null);
   const { toast } = useToast();
   const [hasMounted, setHasMounted] = useState(false);
@@ -59,50 +74,58 @@ export default function MessageLogPage() {
     setHasMounted(true);
   }, []);
 
-  const handleNewMessage = useCallback((event: MessageEvent) => {
-    try {
-      if (event.origin !== window.location.origin) return;
-      if (event.data && event.data.type === 'NEW_TELEGRAM_MESSAGE') {
-        const newMessage = event.data.payload as TelegramMessage;
-
-        if (newMessage.sourceTokenId) {
-          const sourceToken = tokens.find(t => t.id === newMessage.sourceTokenId);
-          if (sourceToken && sourceToken.botInfo) {
-            newMessage.botUsername = sourceToken.botInfo.username;
-          }
-        }
-
-        setMessages(prevMessages => [newMessage, ...prevMessages].slice(0, 200));
-        toast({ title: "New Message Received", description: `From: ${newMessage.from?.username || newMessage.from?.first_name || 'Unknown'} via ${newMessage.botUsername || 'Unknown Bot'}` });
+  const enrichMessageWithBotInfo = useCallback((message: TelegramMessage): TelegramMessage => {
+    if (message.sourceTokenId && !message.botUsername) {
+      const sourceToken = tokens.find(t => t.id === message.sourceTokenId);
+      if (sourceToken && sourceToken.botInfo) {
+        return { ...message, botUsername: sourceToken.botInfo.username };
       }
-    } catch (error) {
-      console.error("Error processing new message from BroadcastChannel/StorageEvent", error);
     }
-  }, [setMessages, toast, tokens]);
+    return message;
+  }, [tokens]);
+
+  const addNewMessage = useCallback((newMessage: TelegramMessage) => {
+    const enrichedNewMessage = enrichMessageWithBotInfo(newMessage);
+    setMessages(prevMessages => {
+      // Add to start, then let setValue in hook handle sorting, uniqueness and capping
+      return [enrichedNewMessage, ...prevMessages]; 
+    });
+    toast({ 
+      title: "New Message Received", 
+      description: `From: ${enrichedNewMessage.from?.username || enrichedNewMessage.from?.first_name || 'Unknown'} via ${enrichedNewMessage.botUsername || 'Bot'}` 
+    });
+  }, [setMessages, toast, enrichMessageWithBotInfo]);
+
 
   useEffect(() => {
+    if (!hasMounted) return;
+
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === 'telematrix_new_webhook_message' && event.newValue) {
         try {
           const newMessage = JSON.parse(event.newValue) as TelegramMessage;
-          if (newMessage.sourceTokenId) {
-            const sourceToken = tokens.find(t => t.id === newMessage.sourceTokenId);
-            if (sourceToken && sourceToken.botInfo) {
-              newMessage.botUsername = sourceToken.botInfo.username;
-            }
+          addNewMessage(newMessage);
+        } catch (e) { 
+          console.error("Error parsing message from localStorage event", e); 
+        }
+      } else if (event.key === 'telematrix_webhook_messages' && event.newValue) {
+        // If the whole list is updated by another tab (e.g. by Get Updates)
+        try {
+          const newMessagesArray = JSON.parse(event.newValue) as TelegramMessage[];
+          if (Array.isArray(newMessagesArray)) {
+             setMessages(newMessagesArray.map(enrichMessageWithBotInfo));
           }
-          setMessages(prevMessages => [newMessage, ...prevMessages].slice(0, 200));
-           toast({ title: "New Message via Webhook", description: `From: ${newMessage.from?.username || newMessage.from?.first_name || 'Unknown'} via ${newMessage.botUsername || 'Unknown Bot'}` });
-        } catch (e) { console.error("Error parsing message from storage", e); }
+        } catch(e) {
+          console.error("Error parsing full message list from storage event", e);
+        }
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
-
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [handleNewMessage, setMessages, toast, tokens]);
+  }, [hasMounted, addNewMessage, setMessages, enrichMessageWithBotInfo]);
 
 
   const handleReply = (message: TelegramMessage) => {
@@ -113,7 +136,7 @@ export default function MessageLogPage() {
     setReplyingToMessage(null);
   };
 
-  const handleDownloadFile = async (fileId: string, fileName: string = "downloaded_file", sourceTokenId?: string) => {
+  const handleDownloadFile = async (fileId: string, fileNameFromMessage?: string, sourceTokenId?: string) => {
     if (!sourceTokenId) {
         toast({ title: "Error", description: "Source token ID missing for file download.", variant: "destructive"});
         return;
@@ -124,13 +147,14 @@ export default function MessageLogPage() {
         return;
     }
 
-    toast({ title: "Downloading...", description: `Preparing ${fileName} for download.`});
+    const defaultFileName = fileNameFromMessage || "downloaded_file";
+    toast({ title: "Downloading...", description: `Preparing ${defaultFileName} for download.`});
     try {
         const result = await downloadFileAction(token, fileId);
         if (result.success && result.data) {
             const blob = new Blob([result.data.data], { type: result.data.mimeType || 'application/octet-stream' });
-            saveAs(blob, result.data.fileName || fileName);
-            toast({ title: "Download Complete", description: `${result.data.fileName || fileName} downloaded.`});
+            saveAs(blob, result.data.fileName || defaultFileName); // Use file-saver
+            toast({ title: "Download Complete", description: `${result.data.fileName || defaultFileName} downloaded.`});
         } else {
             toast({ title: "Download Failed", description: result.error || "Could not download file.", variant: "destructive"});
         }
@@ -139,20 +163,28 @@ export default function MessageLogPage() {
         console.error("File download error:", error);
     }
   };
+  
+  // Enrich messages on initial load or when tokens change
+  useEffect(() => {
+    if (hasMounted && tokens.length > 0) {
+      setMessages(currentMessages => currentMessages.map(enrichMessageWithBotInfo));
+    }
+  }, [hasMounted, tokens, setMessages, enrichMessageWithBotInfo]);
+
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-headline font-bold tracking-tight">Message Log</h1>
         <p className="text-muted-foreground">
-          Displays messages received via webhook from your Telegram bots. Data is stored in session storage.
+          Displays messages received from your Telegram bots. Data is stored in session storage and updated via "Get Updates" or webhook events.
         </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Recent Messages</CardTitle>
-          {hasMounted && <CardDescription>Showing the last {messages.length} messages. Updates in real-time.</CardDescription>}
+          {hasMounted && <CardDescription>Showing the last {messages.length} messages. Updates in real-time based on session activity.</CardDescription>}
         </CardHeader>
         <CardContent>
           {!hasMounted ? (
@@ -161,13 +193,13 @@ export default function MessageLogPage() {
               <p className="ml-2 text-muted-foreground">Loading messages...</p>
             </div>
           ) : messages.length === 0 ? (
-            <p className="text-muted-foreground text-center py-10">No messages received yet. Ensure your webhook is set up correctly.</p>
+            <p className="text-muted-foreground text-center py-10">No messages recorded yet. Use "Get Updates" or ensure your webhook is set up and bots are active.</p>
           ) : (
             <ScrollArea className="h-[600px] p-1">
               <div className="space-y-4">
-                {messages.map((msg, index) => (
+                {messages.map((msg, index) => ( // Added index to key for potential date collisions if precision is low
                   <MessageCard
-                    key={`${msg.message_id}-${msg.date}-${index}`}
+                    key={`${msg.message_id}-${msg.date}-${msg.chat.id}-${index}`}
                     message={msg}
                     onReply={handleReply}
                     onDownloadFile={handleDownloadFile}

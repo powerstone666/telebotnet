@@ -10,20 +10,21 @@ import { useToast } from '@/hooks/use-toast';
 import { getBotInfoAction, checkWebhookAction } from './actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Label }
-from '@/components/ui/label';
+import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 
 export default function TokenManagementPage() {
-  const { tokens, addToken, removeToken, updateToken, isLoading: isLoadingTokens, setTokensDirectly } = useStoredTokens();
+  const { tokens, addToken, removeToken, updateToken, isLoading: isLoadingTokens } = useStoredTokens();
   const { toast } = useToast();
   const [isLoadingTokenMap, setIsLoadingTokenMap] = useState<Record<string, boolean>>({});
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState(30); // Default 30 seconds
+  const [refreshInterval, setRefreshInterval] = useState(60); // Default 60 seconds
 
   const handleTokenAdded = (newToken: StoredToken) => {
     addToken(newToken);
+    // Optionally, refresh info for the newly added token immediately
+    refreshSingleTokenInfo(newToken, true); 
   };
 
   const handleDeleteToken = (tokenId: string) => {
@@ -38,7 +39,9 @@ export default function TokenManagementPage() {
   };
   
   const refreshSingleTokenInfo = useCallback(async (tokenToRefresh: StoredToken, suppressToast = false) => {
+    if (isLoadingTokenMap[tokenToRefresh.id]) return; // Prevent multiple refreshes for the same token
     setIsLoadingTokenMap(prev => ({ ...prev, [tokenToRefresh.id]: true }));
+    
     try {
       const botInfoResult = await getBotInfoAction(tokenToRefresh.token);
       const webhookCheckResult = await checkWebhookAction(tokenToRefresh.token);
@@ -47,7 +50,7 @@ export default function TokenManagementPage() {
       if (botInfoResult.success && botInfoResult.data) {
         newBotInfo = botInfoResult.data;
       } else if (!suppressToast) {
-        toast({ title: `Refresh Error (${tokenToRefresh.botInfo?.username || 'token'})`, description: `Failed to fetch bot info: ${botInfoResult.error}`, variant: "destructive" });
+        toast({ title: `Refresh Error (${newBotInfo?.username || 'token'})`, description: `Failed to fetch bot info: ${botInfoResult.error}`, variant: "destructive" });
       }
 
       let webhookStatus: StoredToken['webhookStatus'] = tokenToRefresh.webhookStatus;
@@ -59,14 +62,14 @@ export default function TokenManagementPage() {
       } else {
         webhookStatus = 'failed';
          if (!suppressToast) {
-            toast({ title: `Refresh Error (${tokenToRefresh.botInfo?.username || 'token'})`, description: `Failed to check webhook: ${webhookCheckResult.error}`, variant: "destructive" });
+            toast({ title: `Refresh Error (${newBotInfo?.username || 'token'})`, description: `Failed to check webhook: ${webhookCheckResult.error}`, variant: "destructive" });
          }
       }
       
       updateToken(tokenToRefresh.id, { 
         botInfo: newBotInfo, 
         webhookStatus,
-        isCurrentWebhook,
+        isCurrentWebhook, // This is the new field
         lastActivity: new Date().toISOString() 
       });
 
@@ -80,17 +83,16 @@ export default function TokenManagementPage() {
     } finally {
       setIsLoadingTokenMap(prev => ({ ...prev, [tokenToRefresh.id]: false }));
     }
-  }, [updateToken, toast]);
+  }, [updateToken, toast, isLoadingTokenMap]);
 
 
   useEffect(() => {
-    // Initial refresh of all tokens to get webhook status if unknown,
-    // once tokens are loaded.
+    // Initial refresh for tokens with 'unknown' or undefined webhook status
     if (!isLoadingTokens && tokens.length > 0) {
         tokens.forEach(token => {
-        if (token.webhookStatus === 'unknown' || token.webhookStatus === undefined) { 
-            refreshSingleTokenInfo(token, true); // Suppress toast for initial batch refresh
-        }
+          if (token.webhookStatus === 'unknown' || typeof token.webhookStatus === 'undefined' || typeof token.isCurrentWebhook === 'undefined') { 
+              refreshSingleTokenInfo(token, true); // Suppress toast for initial batch refresh
+          }
         });
     }
   }, [isLoadingTokens, tokens, refreshSingleTokenInfo]);
@@ -98,8 +100,9 @@ export default function TokenManagementPage() {
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
-    if (autoRefreshEnabled && tokens.length > 0 && refreshInterval > 0) {
+    if (autoRefreshEnabled && tokens.length > 0 && refreshInterval >= 10) { // Minimum 10 seconds interval
       intervalId = setInterval(() => {
+        console.log("Auto-refreshing tokens...");
         tokens.forEach(token => refreshSingleTokenInfo(token, true)); // Suppress toasts for auto-refresh
       }, refreshInterval * 1000);
     }
@@ -123,7 +126,7 @@ export default function TokenManagementPage() {
       <Card>
         <CardHeader>
           <CardTitle>Auto-Refresh Settings</CardTitle>
-          <CardDescription>Automatically refresh bot information and webhook status.</CardDescription>
+          <CardDescription>Automatically refresh bot information and webhook status for all tokens.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-2">
@@ -131,19 +134,21 @@ export default function TokenManagementPage() {
               id="auto-refresh-switch"
               checked={autoRefreshEnabled}
               onCheckedChange={setAutoRefreshEnabled}
+              aria-label="Enable auto-refresh"
             />
             <Label htmlFor="auto-refresh-switch">Enable Auto-Refresh</Label>
           </div>
           {autoRefreshEnabled && (
             <div className="flex items-center space-x-2">
-              <Label htmlFor="refresh-interval-input">Refresh every</Label>
+              <Label htmlFor="refresh-interval-input" className="whitespace-nowrap">Refresh every</Label>
               <Input
                 id="refresh-interval-input"
                 type="number"
-                min="5"
+                min="10" // Sensible minimum to avoid spamming API
                 value={refreshInterval}
-                onChange={(e) => setRefreshInterval(Math.max(5, parseInt(e.target.value, 10) || 30))}
-                className="w-20"
+                onChange={(e) => setRefreshInterval(Math.max(10, parseInt(e.target.value, 10) || 60))}
+                className="w-24"
+                aria-label="Refresh interval in seconds"
               />
               <Label htmlFor="refresh-interval-input">seconds</Label>
             </div>

@@ -76,7 +76,8 @@ export default function UsersPage() {
               if (!existingUser) {
                 return [...prevUsers, message.from!];
               }
-              return prevUsers;
+              // Optionally update existing user data if message.from has newer info
+              return prevUsers.map(u => u.id === message.from!.id ? {...u, ...message.from} : u);
             });
           }
         } catch (e) { console.error("Error processing user from storage event", e); }
@@ -100,7 +101,7 @@ export default function UsersPage() {
       <Card>
         <CardHeader>
           <CardTitle>Encountered Users {hasMounted ? `(${users.length})` : ''}</CardTitle>
-          <CardDescription>List of users your bots have interacted with.</CardDescription>
+          <CardDescription>List of users your bots have interacted with. Updated via "Get Updates" or webhook events.</CardDescription>
         </CardHeader>
         <CardContent>
           {!hasMounted ? (
@@ -109,7 +110,7 @@ export default function UsersPage() {
               <p className="ml-2 text-muted-foreground">Loading users...</p>
             </div>
           ) : users.length === 0 ? (
-            <p className="text-muted-foreground text-center py-10">No users recorded yet. Interact with your bots to see users here.</p>
+            <p className="text-muted-foreground text-center py-10">No users recorded yet. Use "Get Updates" or ensure your bots receive messages to populate this list.</p>
           ) : (
             <ScrollArea className="h-[600px]">
               <Table>
@@ -138,6 +139,7 @@ export default function UsersPage() {
                       <TableCell>
                         {user.is_premium && <Badge variant="outline" className="border-yellow-500 text-yellow-600 mr-1">Premium</Badge>}
                         {user.is_bot && <Badge variant="secondary">Bot</Badge>}
+                        {!user.is_premium && !user.is_bot && <Badge variant="outline">User</Badge>}
                       </TableCell>
                     </TableRow>
                   ))}

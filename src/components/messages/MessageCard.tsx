@@ -5,23 +5,22 @@ import type { TelegramMessage, TelegramPhotoSize } from "@/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { FileText, Image as ImageIcon, Video, Download, Reply, Bot } from "lucide-react";
+import { FileText, Image as ImageIcon, Video, Download, Reply, Bot, AlertCircle } from "lucide-react";
 import { format, fromUnixTime } from 'date-fns';
-import Image from "next/image";
+import NextImage from "next/image"; // Renamed to avoid conflict with Lucide Icon
 import { useState, useEffect } from 'react';
 
 interface MessageCardProps {
   message: TelegramMessage;
   onReply: (message: TelegramMessage) => void;
-  onDownloadFile?: (fileId: string, fileName: string | undefined, token?: string) => void;
+  onDownloadFile?: (fileId: string, fileName: string | undefined, sourceTokenId?: string) => void;
 }
 
-function getInitials(name: string = "") {
-  const parts = name.split(" ");
-  if (parts.length > 1) {
-    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  }
-  return name.substring(0, 2).toUpperCase();
+function getInitials(name: string = ""): string {
+  const parts = name.split(" ").filter(Boolean);
+  if (parts.length === 0) return "??";
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
 const getLargestPhoto = (photos?: TelegramPhotoSize[]): TelegramPhotoSize | undefined => {
@@ -29,35 +28,36 @@ const getLargestPhoto = (photos?: TelegramPhotoSize[]): TelegramPhotoSize | unde
   return photos.reduce((largest, current) => (current.width * current.height > largest.width * largest.height ? current : largest));
 };
 
-const getFilePreviewUrl = (fileId: string, token: string | undefined) => {
-  if(!token) return "https://placehold.co/200x150.png?text=Preview";
-  return `https://placehold.co/200x150.png?text=FilePreview`;
-};
-
-
 export function MessageCard({ message, onReply, onDownloadFile }: MessageCardProps) {
   const [formattedDate, setFormattedDate] = useState<string | null>(null);
 
   useEffect(() => {
-    if (message.date) {
+    // Ensure message.date is a valid number before formatting
+    if (typeof message.date === 'number' && !isNaN(message.date)) {
       try {
         setFormattedDate(format(fromUnixTime(message.date), 'PP pp'));
       } catch (e) {
-        console.error("Error formatting message date", e);
+        console.error("Error formatting message date:", message.date, e);
         setFormattedDate("Invalid date");
       }
     } else {
-      setFormattedDate(null); // Or some placeholder like 'Date unavailable'
+      setFormattedDate("Date unavailable");
     }
   }, [message.date]);
 
   const senderName = message.from?.first_name ? `${message.from.first_name} ${message.from.last_name || ''}`.trim() : (message.from?.username || 'Unknown User');
-  const chatTitle = message.chat.title || message.chat.username || message.chat.first_name || 'Unknown Chat';
+  const chatTitle = message.chat.title || message.chat.username || (message.chat.type === 'private' ? `${message.chat.first_name || ''} ${message.chat.last_name || ''}`.trim() : 'Unknown Chat');
   const largestPhoto = getLargestPhoto(message.photo);
-  // The token finding logic for placeholder URL isn't strictly necessary if getFilePreviewUrl doesn't use the token.
-  // For now, it's left as is, assuming getFilePreviewUrl might be enhanced later.
-  // const tokenForPreview = message.sourceTokenId ? tokens.find(t => t.id === message.sourceTokenId)?.token : undefined;
+  const canDownload = onDownloadFile && message.sourceTokenId;
 
+  const handleDownload = (fileId?: string, fileName?: string) => {
+    if (canDownload && fileId) {
+      onDownloadFile(fileId, fileName, message.sourceTokenId);
+    } else if (!message.sourceTokenId) {
+      console.warn("Download attempted without sourceTokenId for message:", message.message_id);
+      // Optionally show a toast or alert to the user
+    }
+  };
 
   return (
     <Card className="shadow-sm hover:shadow-md transition-shadow duration-200">
@@ -79,45 +79,60 @@ export function MessageCard({ message, onReply, onDownloadFile }: MessageCardPro
           </p>
         </div>
       </CardHeader>
-      <CardContent className="px-4 pb-3 space-y-2">
-        {message.text && <p className="text-sm whitespace-pre-wrap">{message.text}</p>}
-        {message.caption && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap">Caption: {message.caption}</p>}
+      <CardContent className="px-4 pb-3 space-y-3">
+        {message.text && <p className="text-sm whitespace-pre-wrap break-words">{message.text}</p>}
+        
+        {message.caption && !message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words">Caption: {message.caption}</p>}
+        {message.caption && message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words mt-1">Additionally captioned: {message.caption}</p>}
+
 
         {largestPhoto && (
-          <div className="mt-2">
-            <Image 
-              src={getFilePreviewUrl(largestPhoto.file_id, undefined /* tokenForPreview */)} 
+          <div className="mt-2 border rounded-md p-2 bg-muted/20">
+            <NextImage 
+              src={`https://placehold.co/300x200.png?text=Photo+Preview`} 
               alt={message.caption || "Sent photo"} 
-              width={200} height={150} 
-              className="rounded-md border object-cover"
-              data-ai-hint="photo message"
+              width={300} height={200} 
+              className="rounded-md object-contain mx-auto"
+              data-ai-hint="photograph image"
             />
+            {canDownload && (
+              <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => handleDownload(largestPhoto.file_id, `photo_${largestPhoto.file_unique_id}.jpg`)}>
+                <Download className="mr-1 h-4 w-4" /> Download Photo
+              </Button>
+            )}
           </div>
         )}
         {message.document && (
-          <div className="flex items-center space-x-2 p-2 border rounded-md bg-secondary/30">
-            <FileText className="h-5 w-5 text-primary" />
-            <span className="text-sm flex-1 truncate">{message.document.file_name || 'Document'}</span>
-            {onDownloadFile && message.sourceTokenId && (
-              <Button size="sm" variant="outline" onClick={() => onDownloadFile(message.document!.file_id, message.document!.file_name, message.sourceTokenId)}>
-                <Download className="mr-1 h-4 w-4" /> Download
+          <div className="flex items-center space-x-2 p-2 border rounded-md bg-muted/30 hover:bg-muted/50">
+            <FileText className="h-5 w-5 text-primary shrink-0" />
+            <span className="text-sm flex-1 truncate" title={message.document.file_name || 'Document'}>{message.document.file_name || 'Document'}</span>
+            {canDownload && (
+              <Button size="icon" variant="ghost" onClick={() => handleDownload(message.document!.file_id, message.document!.file_name)}>
+                <Download className="h-4 w-4" />
+                <span className="sr-only">Download Document</span>
               </Button>
             )}
           </div>
         )}
          {message.video && (
-          <div className="flex items-center space-x-2 p-2 border rounded-md bg-secondary/30">
-            <Video className="h-5 w-5 text-primary" />
-            <span className="text-sm flex-1 truncate">{message.video.file_name || 'Video'}</span>
-             {onDownloadFile && message.sourceTokenId && (
-              <Button size="sm" variant="outline" onClick={() => onDownloadFile(message.video!.file_id, message.video!.file_name, message.sourceTokenId)}>
-                <Download className="mr-1 h-4 w-4" /> Download
+          <div className="flex items-center space-x-2 p-2 border rounded-md bg-muted/30 hover:bg-muted/50">
+            <Video className="h-5 w-5 text-primary shrink-0" />
+            <span className="text-sm flex-1 truncate" title={message.video.file_name || 'Video'}>{message.video.file_name || `Video (${message.video.width}x${message.video.height}, ${message.video.duration}s)`}</span>
+             {canDownload && (
+              <Button size="icon" variant="ghost" onClick={() => handleDownload(message.video!.file_id, message.video!.file_name)}>
+                <Download className="h-4 w-4" />
+                <span className="sr-only">Download Video</span>
               </Button>
             )}
           </div>
         )}
+         {!canDownload && (message.document || message.video || largestPhoto) && (
+          <p className="text-xs text-muted-foreground flex items-center">
+            <AlertCircle className="h-3 w-3 mr-1"/> Download not available (token info missing).
+          </p>
+        )}
       </CardContent>
-      <CardFooter className="px-4 py-3 border-t">
+      <CardFooter className="px-4 py-3 border-t flex justify-start">
         <Button variant="ghost" size="sm" onClick={() => onReply(message)}>
           <Reply className="mr-1 h-4 w-4" /> Reply
         </Button>
