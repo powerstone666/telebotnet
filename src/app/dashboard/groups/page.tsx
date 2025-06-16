@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Users, Link as LinkIcon, Lock, ShieldCheck, MessageSquareDashed } from 'lucide-react';
+import { Users, Link as LinkIcon, Lock, ShieldCheck, MessageSquareDashed, Loader2 } from 'lucide-react';
 
 // Helper hook for sessionStorage to manage groups
 function useSessionStorageGroups(key: string, initialValue: TelegramChat[]) {
@@ -19,19 +19,20 @@ function useSessionStorageGroups(key: string, initialValue: TelegramChat[]) {
         const item = window.sessionStorage.getItem(key);
         if (item) {
            const parsedItem = JSON.parse(item);
-           // Ensure what's parsed is an array, matching TelegramChat[] type
            if (Array.isArray(parsedItem)) {
             setStoredValue(parsedItem);
            } else {
-            setStoredValue(initialValue); // Fallback if stored data is not an array
+            setStoredValue(initialValue);
            }
+        } else {
+          setStoredValue(initialValue); // Ensure initialValue is set if item is null
         }
-      } catch (error) { 
-        console.error(`Error reading ${key} from sessionStorage:`, error); 
+      } catch (error) {
+        console.error(`Error reading ${key} from sessionStorage:`, error);
         setStoredValue(initialValue);
       }
     }
-  }, [key]);
+  }, [key, initialValue]);
 
   const setValue = (value: TelegramChat[] | ((val: TelegramChat[]) => TelegramChat[])) => {
     try {
@@ -48,13 +49,20 @@ function useSessionStorageGroups(key: string, initialValue: TelegramChat[]) {
 
 export default function GroupsPage() {
   const [groups, setGroups] = useSessionStorageGroups('telematrix_groups', []);
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted) return; // Only run storage listener after mount
+
     const handleNewMessageEvent = (event: StorageEvent) => {
       if (event.key === 'telematrix_new_webhook_message' && event.newValue) {
         try {
           const message = JSON.parse(event.newValue) as TelegramMessage;
-          if (message.chat && message.chat.type !== 'private') { 
+          if (message.chat && message.chat.type !== 'private') {
             setGroups(prevGroups => {
               const existingGroup = prevGroups.find(g => g.id === message.chat.id);
               if (!existingGroup) {
@@ -69,14 +77,14 @@ export default function GroupsPage() {
 
     window.addEventListener('storage', handleNewMessageEvent);
     return () => window.removeEventListener('storage', handleNewMessageEvent);
-  }, [setGroups]);
+  }, [setGroups, hasMounted]);
 
   const getPermissionString = (permissions?: TelegramChatPermissions): string => {
     if (!permissions) return 'N/A';
     const count = Object.values(permissions).filter(p => p === true).length;
     return `${count} permissions active`;
   };
-  
+
   const ChatTypeIcon = ({type}: {type: TelegramChat['type']}) => {
     switch(type) {
         case 'group': return <Users className="h-4 w-4 text-blue-500" />;
@@ -97,11 +105,16 @@ export default function GroupsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Encountered Groups/Channels ({groups.length})</CardTitle>
+          <CardTitle>Encountered Groups/Channels {hasMounted ? `(${groups.length})` : ''}</CardTitle>
           <CardDescription>List of groups and channels your bots are part of or have received messages from.</CardDescription>
         </CardHeader>
         <CardContent>
-          {groups.length === 0 ? (
+          {!hasMounted ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading groups...</p>
+            </div>
+          ) : groups.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No groups or channels recorded yet. Ensure your bots are in groups/channels or receive messages from them.</p>
           ) : (
             <ScrollArea className="h-[600px]">

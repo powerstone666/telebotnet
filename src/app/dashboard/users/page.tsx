@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Loader2 } from 'lucide-react';
 
 // Helper hook for sessionStorage to manage users
 function useSessionStorageUsers(key: string, initialValue: TelegramUser[]) {
@@ -19,19 +20,20 @@ function useSessionStorageUsers(key: string, initialValue: TelegramUser[]) {
         const item = window.sessionStorage.getItem(key);
         if (item) {
           const parsedItem = JSON.parse(item);
-          // Ensure what's parsed is an array, matching TelegramUser[] type
           if (Array.isArray(parsedItem)) {
             setStoredValue(parsedItem);
           } else {
-            setStoredValue(initialValue); // Fallback if stored data is not an array
+            setStoredValue(initialValue); 
           }
+        } else {
+          setStoredValue(initialValue); // Ensure initialValue is set if item is null
         }
-      } catch (error) { 
-        console.error(`Error reading ${key} from sessionStorage:`, error); 
-        setStoredValue(initialValue); 
+      } catch (error) {
+        console.error(`Error reading ${key} from sessionStorage:`, error);
+        setStoredValue(initialValue);
       }
     }
-  }, [key]);
+  }, [key, initialValue]);
 
   const setValue = (value: TelegramUser[] | ((val: TelegramUser[]) => TelegramUser[])) => {
     try {
@@ -55,8 +57,15 @@ function getInitials(name: string = ""): string {
 
 export default function UsersPage() {
   const [users, setUsers] = useSessionStorageUsers('telematrix_users', []);
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted) return; // Only run storage listener after mount
+
     const handleNewMessageEvent = (event: StorageEvent) => {
       if (event.key === 'telematrix_new_webhook_message' && event.newValue) {
         try {
@@ -76,7 +85,7 @@ export default function UsersPage() {
 
     window.addEventListener('storage', handleNewMessageEvent);
     return () => window.removeEventListener('storage', handleNewMessageEvent);
-  }, [setUsers]);
+  }, [setUsers, hasMounted]);
 
 
   return (
@@ -90,11 +99,16 @@ export default function UsersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Encountered Users ({users.length})</CardTitle>
+          <CardTitle>Encountered Users {hasMounted ? `(${users.length})` : ''}</CardTitle>
           <CardDescription>List of users your bots have interacted with.</CardDescription>
         </CardHeader>
         <CardContent>
-          {users.length === 0 ? (
+          {!hasMounted ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading users...</p>
+            </div>
+          ) : users.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No users recorded yet. Interact with your bots to see users here.</p>
           ) : (
             <ScrollArea className="h-[600px]">

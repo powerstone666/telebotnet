@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useStoredTokens } from '@/lib/localStorage';
 import { downloadFileAction } from './actions';
 import { saveAs } from 'file-saver';
+import { Loader2 } from 'lucide-react';
 
 // Helper hook for sessionStorage
 function useSessionStorage<T>(key: string, initialValue: T) {
@@ -22,13 +23,15 @@ function useSessionStorage<T>(key: string, initialValue: T) {
         const item = window.sessionStorage.getItem(key);
         if (item) {
           setStoredValue(JSON.parse(item));
+        } else {
+          setStoredValue(initialValue); // Ensure initialValue is set if item is null
         }
       } catch (error) {
         console.error(`Error reading ${key} from sessionStorage:`, error);
-        setStoredValue(initialValue); // Fallback to initial value on error
+        setStoredValue(initialValue);
       }
     }
-  }, [key]); // Removed initialValue from deps as it's a fallback
+  }, [key, initialValue]);
 
   const setValue = (value: T | ((val: T) => T)) => {
     try {
@@ -50,13 +53,18 @@ export default function MessageLogPage() {
   const { tokens } = useStoredTokens();
   const [replyingToMessage, setReplyingToMessage] = useState<TelegramMessage | null>(null);
   const { toast } = useToast();
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   const handleNewMessage = useCallback((event: MessageEvent) => {
     try {
-      if (event.origin !== window.location.origin) return; 
+      if (event.origin !== window.location.origin) return;
       if (event.data && event.data.type === 'NEW_TELEGRAM_MESSAGE') {
         const newMessage = event.data.payload as TelegramMessage;
-        
+
         if (newMessage.sourceTokenId) {
           const sourceToken = tokens.find(t => t.id === newMessage.sourceTokenId);
           if (sourceToken && sourceToken.botInfo) {
@@ -64,7 +72,7 @@ export default function MessageLogPage() {
           }
         }
 
-        setMessages(prevMessages => [newMessage, ...prevMessages].slice(0, 200)); 
+        setMessages(prevMessages => [newMessage, ...prevMessages].slice(0, 200));
         toast({ title: "New Message Received", description: `From: ${newMessage.from?.username || newMessage.from?.first_name || 'Unknown'} via ${newMessage.botUsername || 'Unknown Bot'}` });
       }
     } catch (error) {
@@ -104,7 +112,7 @@ export default function MessageLogPage() {
   const handleCloseReplyModal = () => {
     setReplyingToMessage(null);
   };
-  
+
   const handleDownloadFile = async (fileId: string, fileName: string = "downloaded_file", sourceTokenId?: string) => {
     if (!sourceTokenId) {
         toast({ title: "Error", description: "Source token ID missing for file download.", variant: "destructive"});
@@ -144,19 +152,24 @@ export default function MessageLogPage() {
       <Card>
         <CardHeader>
           <CardTitle>Recent Messages</CardTitle>
-          <CardDescription>Showing the last {messages.length} messages. Updates in real-time.</CardDescription>
+          {hasMounted && <CardDescription>Showing the last {messages.length} messages. Updates in real-time.</CardDescription>}
         </CardHeader>
         <CardContent>
-          {messages.length === 0 ? (
+          {!hasMounted ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading messages...</p>
+            </div>
+          ) : messages.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No messages received yet. Ensure your webhook is set up correctly.</p>
           ) : (
             <ScrollArea className="h-[600px] p-1">
               <div className="space-y-4">
                 {messages.map((msg, index) => (
-                  <MessageCard 
-                    key={`${msg.message_id}-${msg.date}-${index}`} 
-                    message={msg} 
-                    onReply={handleReply} 
+                  <MessageCard
+                    key={`${msg.message_id}-${msg.date}-${index}`}
+                    message={msg}
+                    onReply={handleReply}
                     onDownloadFile={handleDownloadFile}
                   />
                 ))}
