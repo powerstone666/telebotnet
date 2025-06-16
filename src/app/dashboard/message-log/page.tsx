@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -5,26 +6,29 @@ import type { TelegramMessage, StoredToken } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCard } from '@/components/messages/MessageCard';
-import { ReplyModal } from '@/components/messages/ReplyModal'; // To be created
+import { ReplyModal } from '@/components/messages/ReplyModal';
 import { useToast } from '@/hooks/use-toast';
 import { useStoredTokens } from '@/lib/localStorage';
-import { downloadFileAction } from './actions'; // To be created for file downloads
-import { saveAs } from 'file-saver'; // npm install file-saver @types/file-saver
+import { downloadFileAction } from './actions';
+import { saveAs } from 'file-saver';
 
 // Helper hook for sessionStorage
 function useSessionStorage<T>(key: string, initialValue: T) {
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    if (typeof window === 'undefined') {
-      return initialValue;
+  const [storedValue, setStoredValue] = useState<T>(initialValue);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const item = window.sessionStorage.getItem(key);
+        if (item) {
+          setStoredValue(JSON.parse(item));
+        }
+      } catch (error) {
+        console.error(`Error reading ${key} from sessionStorage:`, error);
+        setStoredValue(initialValue); // Fallback to initial value on error
+      }
     }
-    try {
-      const item = window.sessionStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      console.error(error);
-      return initialValue;
-    }
-  });
+  }, [key]); // Removed initialValue from deps as it's a fallback
 
   const setValue = (value: T | ((val: T) => T)) => {
     try {
@@ -34,7 +38,7 @@ function useSessionStorage<T>(key: string, initialValue: T) {
         window.sessionStorage.setItem(key, JSON.stringify(valueToStore));
       }
     } catch (error) {
-      console.error(error);
+      console.error(`Error setting ${key} in sessionStorage:`, error);
     }
   };
   return [storedValue, setValue] as const;
@@ -49,11 +53,10 @@ export default function MessageLogPage() {
 
   const handleNewMessage = useCallback((event: MessageEvent) => {
     try {
-      if (event.origin !== window.location.origin) return; // Security check
+      if (event.origin !== window.location.origin) return; 
       if (event.data && event.data.type === 'NEW_TELEGRAM_MESSAGE') {
         const newMessage = event.data.payload as TelegramMessage;
         
-        // Augment message with botUsername if sourceTokenId is present
         if (newMessage.sourceTokenId) {
           const sourceToken = tokens.find(t => t.id === newMessage.sourceTokenId);
           if (sourceToken && sourceToken.botInfo) {
@@ -61,7 +64,7 @@ export default function MessageLogPage() {
           }
         }
 
-        setMessages(prevMessages => [newMessage, ...prevMessages].slice(0, 200)); // Keep last 200 messages
+        setMessages(prevMessages => [newMessage, ...prevMessages].slice(0, 200)); 
         toast({ title: "New Message Received", description: `From: ${newMessage.from?.username || newMessage.from?.first_name || 'Unknown'} via ${newMessage.botUsername || 'Unknown Bot'}` });
       }
     } catch (error) {
@@ -70,13 +73,10 @@ export default function MessageLogPage() {
   }, [setMessages, toast, tokens]);
 
   useEffect(() => {
-     // Listen for messages from /api/webhook (e.g., via BroadcastChannel or custom event)
-    // For simplicity using localStorage as a makeshift event bus for cross-tab/window communication (not ideal for production)
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === 'telematrix_new_webhook_message' && event.newValue) {
         try {
           const newMessage = JSON.parse(event.newValue) as TelegramMessage;
-          // Augment message with botUsername
           if (newMessage.sourceTokenId) {
             const sourceToken = tokens.find(t => t.id === newMessage.sourceTokenId);
             if (sourceToken && sourceToken.botInfo) {
@@ -90,14 +90,9 @@ export default function MessageLogPage() {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    // Fallback for same-tab updates if /api/webhook uses a different mechanism
-    // This would ideally use BroadcastChannel API for more robust cross-tab communication
-    // window.addEventListener('message', handleNewMessage);
-
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
-      // window.removeEventListener('message', handleNewMessage);
     };
   }, [handleNewMessage, setMessages, toast, tokens]);
 

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -10,13 +11,27 @@ import { Badge } from '@/components/ui/badge';
 
 // Helper hook for sessionStorage to manage users
 function useSessionStorageUsers(key: string, initialValue: TelegramUser[]) {
-  const [storedValue, setStoredValue] = useState<TelegramUser[]>(() => {
-    if (typeof window === 'undefined') return initialValue;
-    try {
-      const item = window.sessionStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) { console.error(error); return initialValue; }
-  });
+  const [storedValue, setStoredValue] = useState<TelegramUser[]>(initialValue);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const item = window.sessionStorage.getItem(key);
+        if (item) {
+          const parsedItem = JSON.parse(item);
+          // Ensure what's parsed is an array, matching TelegramUser[] type
+          if (Array.isArray(parsedItem)) {
+            setStoredValue(parsedItem);
+          } else {
+            setStoredValue(initialValue); // Fallback if stored data is not an array
+          }
+        }
+      } catch (error) { 
+        console.error(`Error reading ${key} from sessionStorage:`, error); 
+        setStoredValue(initialValue); 
+      }
+    }
+  }, [key]);
 
   const setValue = (value: TelegramUser[] | ((val: TelegramUser[]) => TelegramUser[])) => {
     try {
@@ -26,7 +41,7 @@ function useSessionStorageUsers(key: string, initialValue: TelegramUser[]) {
       if (typeof window !== 'undefined') {
         window.sessionStorage.setItem(key, JSON.stringify(uniqueUsers));
       }
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error(`Error setting ${key} in sessionStorage:`, error); }
   };
   return [storedValue, setValue] as const;
 }
@@ -42,7 +57,6 @@ export default function UsersPage() {
   const [users, setUsers] = useSessionStorageUsers('telematrix_users', []);
 
   useEffect(() => {
-    // Listen for new messages (e.g., from MessageLog or GetUpdates) to extract users
     const handleNewMessageEvent = (event: StorageEvent) => {
       if (event.key === 'telematrix_new_webhook_message' && event.newValue) {
         try {
@@ -53,8 +67,6 @@ export default function UsersPage() {
               if (!existingUser) {
                 return [...prevUsers, message.from!];
               }
-              // Optionally update existing user if new data is more complete
-              // For now, just add if not exists.
               return prevUsers;
             });
           }

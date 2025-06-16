@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
-import type { TelegramChat, TelegramMessage } from '@/lib/types';
+import type { TelegramChat, TelegramMessage, TelegramChatPermissions } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -10,13 +11,27 @@ import { Users, Link as LinkIcon, Lock, ShieldCheck, MessageSquareDashed } from 
 
 // Helper hook for sessionStorage to manage groups
 function useSessionStorageGroups(key: string, initialValue: TelegramChat[]) {
-  const [storedValue, setStoredValue] = useState<TelegramChat[]>(() => {
-    if (typeof window === 'undefined') return initialValue;
-    try {
-      const item = window.sessionStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) { console.error(error); return initialValue; }
-  });
+  const [storedValue, setStoredValue] = useState<TelegramChat[]>(initialValue);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const item = window.sessionStorage.getItem(key);
+        if (item) {
+           const parsedItem = JSON.parse(item);
+           // Ensure what's parsed is an array, matching TelegramChat[] type
+           if (Array.isArray(parsedItem)) {
+            setStoredValue(parsedItem);
+           } else {
+            setStoredValue(initialValue); // Fallback if stored data is not an array
+           }
+        }
+      } catch (error) { 
+        console.error(`Error reading ${key} from sessionStorage:`, error); 
+        setStoredValue(initialValue);
+      }
+    }
+  }, [key]);
 
   const setValue = (value: TelegramChat[] | ((val: TelegramChat[]) => TelegramChat[])) => {
     try {
@@ -26,7 +41,7 @@ function useSessionStorageGroups(key: string, initialValue: TelegramChat[]) {
       if (typeof window !== 'undefined') {
         window.sessionStorage.setItem(key, JSON.stringify(uniqueGroups));
       }
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error(`Error setting ${key} in sessionStorage:`, error); }
   };
   return [storedValue, setValue] as const;
 }
@@ -39,13 +54,12 @@ export default function GroupsPage() {
       if (event.key === 'telematrix_new_webhook_message' && event.newValue) {
         try {
           const message = JSON.parse(event.newValue) as TelegramMessage;
-          if (message.chat && message.chat.type !== 'private') { // Only add groups/channels
+          if (message.chat && message.chat.type !== 'private') { 
             setGroups(prevGroups => {
               const existingGroup = prevGroups.find(g => g.id === message.chat.id);
               if (!existingGroup) {
                 return [...prevGroups, message.chat];
               }
-              // Optionally update existing group if new data is more complete
               return prevGroups;
             });
           }
@@ -60,7 +74,7 @@ export default function GroupsPage() {
   const getPermissionString = (permissions?: TelegramChatPermissions): string => {
     if (!permissions) return 'N/A';
     const count = Object.values(permissions).filter(p => p === true).length;
-    return `${count} permissions active`; // Simple count, can be more detailed
+    return `${count} permissions active`;
   };
   
   const ChatTypeIcon = ({type}: {type: TelegramChat['type']}) => {
