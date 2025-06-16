@@ -16,7 +16,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
   TooltipContent,
-  // TooltipProvider, // No longer imported or used directly here
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
@@ -27,17 +26,17 @@ const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
-type SidebarContext = {
+type SidebarContextValue = {
   state: "expanded" | "collapsed"
   open: boolean
   setOpen: (open: boolean) => void
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
-  isMobile: boolean
+  isMobile: boolean | undefined // Can be undefined initially
   toggleSidebar: () => void
 }
 
-const SidebarContext = React.createContext<SidebarContext | null>(null)
+const SidebarContext = React.createContext<SidebarContextValue | null>(null)
 
 function useSidebar() {
   const context = React.useContext(SidebarContext)
@@ -68,11 +67,12 @@ const SidebarProvider = React.forwardRef<
     },
     ref
   ) => {
-    const isMobile = useIsMobile()
-    const [openMobile, setOpenMobile] = React.useState(false)
+    const isMobileHookValue = useIsMobile(); // This can be boolean | undefined
 
+    const [openMobile, setOpenMobile] = React.useState(false)
     const [_open, _setOpen] = React.useState(defaultOpen)
     const open = openProp ?? _open
+
     const setOpen = React.useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
         const openState = typeof value === "function" ? value(open) : value
@@ -87,10 +87,11 @@ const SidebarProvider = React.forwardRef<
     )
 
     const toggleSidebar = React.useCallback(() => {
-      return isMobile
-        ? setOpenMobile((open) => !open)
-        : setOpen((open) => !open)
-    }, [isMobile, setOpen, setOpenMobile])
+      // Check against true explicitly because isMobileHookValue can be undefined
+      return isMobileHookValue === true 
+        ? setOpenMobile((currentOpen) => !currentOpen)
+        : setOpen((currentOpen) => !currentOpen)
+    }, [isMobileHookValue, setOpen, setOpenMobile])
 
     React.useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
@@ -109,17 +110,17 @@ const SidebarProvider = React.forwardRef<
 
     const state = open ? "expanded" : "collapsed"
 
-    const contextValue = React.useMemo<SidebarContext>(
+    const contextValue = React.useMemo<SidebarContextValue>(
       () => ({
         state,
         open,
         setOpen,
-        isMobile,
+        isMobile: isMobileHookValue,
         openMobile,
         setOpenMobile,
         toggleSidebar,
       }),
-      [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+      [state, open, setOpen, isMobileHookValue, openMobile, setOpenMobile, toggleSidebar]
     )
 
     return (
@@ -168,6 +169,12 @@ const Sidebar = React.forwardRef<
   ) => {
     const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
 
+    // If isMobile is undefined, it means we haven't determined client screen size yet.
+    // Render null to ensure server and initial client render are consistent.
+    if (isMobile === undefined) {
+      return null; 
+    }
+
     if (collapsible === "none") {
       return (
         <div
@@ -182,8 +189,8 @@ const Sidebar = React.forwardRef<
         </div>
       )
     }
-
-    if (isMobile) {
+    
+    if (isMobile) { // isMobile is now confirmed boolean
       return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
           <SheetContent
@@ -571,7 +578,7 @@ const SidebarMenuButton = React.forwardRef<
         <TooltipContent
           side="right"
           align="center"
-          hidden={state !== "collapsed" || isMobile}
+          hidden={state !== "collapsed" || isMobile === true || isMobile === undefined} // Hide if not collapsed, or if mobile state determined or undetermined
           {...tooltip}
         />
       </Tooltip>
