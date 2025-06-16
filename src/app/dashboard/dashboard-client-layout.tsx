@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sidebar,
   SidebarHeader,
@@ -9,17 +9,29 @@ import {
   SidebarInset,
   SidebarTrigger,
   SidebarRail,
-  useSidebar, // Keep useSidebar if other parts of this component need it directly
 } from "@/components/ui/sidebar";
 import { AppLogo } from "@/components/AppLogo";
 import { NavMenu } from "@/components/NavMenu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-// Loader2 might not be needed if we don't show a specific loading state here for isMobile anymore
+import { Loader2 } from 'lucide-react';
 
 export function DashboardClientLayout({ children }: { children: React.ReactNode }) {
-  // const { isMobile } = useSidebar(); // isMobile from context will be boolean (false on server)
-  // No loader needed here based on isMobile being undefined, as it will always be boolean.
+  const [hasMounted, setHasMounted] = useState(false);
 
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  if (!hasMounted) {
+    // Render a minimal loader on the server and initial client render
+    return (
+      <div className="flex items-center justify-center" style={{minHeight: '100vh'}}>
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Actual layout rendered only on the client after mount
   return (
     <>
       <Sidebar collapsible="icon" className="border-r border-sidebar-border">
