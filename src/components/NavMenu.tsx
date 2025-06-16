@@ -42,23 +42,20 @@ export function NavMenu() {
         <SidebarGroupLabel>Menu</SidebarGroupLabel>
         {navItems.map((item) => (
           <SidebarMenuItem key={item.href}>
-            <Link href={item.href}>
-              <SidebarMenuButton
-                asChild
-                isActive={pathname.startsWith(item.href)}
-                tooltip={{ children: item.label, className: "text-xs" }}
-                className="justify-start"
-              >
-                <span>
-                  <item.icon />
-                  <span>{item.label}</span>
-                </span>
-              </SidebarMenuButton>
-            </Link>
+            <SidebarMenuButton
+              asChild
+              isActive={pathname.startsWith(item.href)}
+              tooltip={{ children: item.label, className: "text-xs" }}
+              className="justify-start"
+            >
+              <Link href={item.href}>
+                <item.icon />
+                <span>{item.label}</span>
+              </Link>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         ))}
       </SidebarGroup>
     </SidebarMenu>
   );
 }
-
