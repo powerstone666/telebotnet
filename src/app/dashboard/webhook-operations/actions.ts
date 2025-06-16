@@ -1,10 +1,11 @@
+
 "use server";
 
-import type { ApiResult } from "@/lib/types";
+import type { ApiResult, TelegramMessage } from "@/lib/types";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
 
-export async function setWebhookAction(token: string, webhookUrl: string): Promise<ApiResult> {
+export async function setWebhookAction(token: string, webhookUrl: string): Promise<ApiResult<boolean>> {
   try {
     if (!webhookUrl.startsWith("https://")) {
       return { success: false, error: "Webhook URL must use HTTPS." };
@@ -17,7 +18,7 @@ export async function setWebhookAction(token: string, webhookUrl: string): Promi
     
     const data = await response.json();
     if (data.ok) {
-      return { success: true, data: data.result };
+      return { success: true, data: data.result as boolean };
     }
     return { success: false, error: data.description || `Telegram API error: ${response.status}` };
   } catch (error) {
@@ -26,7 +27,7 @@ export async function setWebhookAction(token: string, webhookUrl: string): Promi
   }
 }
 
-export async function deleteWebhookAction(token: string): Promise<ApiResult> {
+export async function deleteWebhookAction(token: string): Promise<ApiResult<boolean>> {
   try {
     const response = await fetch(`${TELEGRAM_API_BASE}${token}/deleteWebhook`, {
       method: 'POST',
@@ -36,13 +37,11 @@ export async function deleteWebhookAction(token: string): Promise<ApiResult> {
 
     const data = await response.json();
     if (data.ok) {
-      return { success: true, data: data.result };
+      return { success: true, data: data.result as boolean };
     }
     // Telegram might return an error if webhook is already not set. Consider this a success for deletion.
-    // Example: `Bad Request: webhook is already deleted` or similar.
-    // This needs checking Telegram's exact error messages. For now, a general check.
     if (response.status === 400 && data.description && data.description.toLowerCase().includes("webhook is already deleted")) {
-        return { success: true, data: { message: "Webhook was already not set."} };
+        return { success: true, data: true, error: "Webhook was already not set (considered success)." }; // Return true for data
     }
     return { success: false, error: data.description || `Telegram API error: ${response.status}` };
   } catch (error) {
@@ -50,3 +49,4 @@ export async function deleteWebhookAction(token: string): Promise<ApiResult> {
     return { success: false, error: error instanceof Error ? error.message : "An unknown error occurred deleting webhook." };
   }
 }
+

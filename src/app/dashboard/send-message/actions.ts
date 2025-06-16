@@ -1,7 +1,7 @@
 
 "use server";
 
-import type { ApiResult } from "@/lib/types";
+import type { ApiResult, TelegramMessage } from "@/lib/types";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
 
@@ -13,7 +13,7 @@ interface SendMessagePayload {
   replyToMessageId?: string;
 }
 
-export async function sendMessageAction(payload: SendMessagePayload): Promise<ApiResult> {
+export async function sendMessageAction(payload: SendMessagePayload): Promise<ApiResult<TelegramMessage>> {
   const { token, chatId, text, parseMode, replyToMessageId } = payload;
   try {
     const body: any = {
@@ -39,7 +39,7 @@ export async function sendMessageAction(payload: SendMessagePayload): Promise<Ap
     
     const data = await response.json();
     if (data.ok) {
-      return { success: true, data: data.result };
+      return { success: true, data: data.result as TelegramMessage };
     }
     return { success: false, error: data.description || `Telegram API error: ${response.status}` };
   } catch (error) {
@@ -48,29 +48,30 @@ export async function sendMessageAction(payload: SendMessagePayload): Promise<Ap
   }
 }
 
-async function sendMediaAction(formData: FormData, endpoint: 'sendPhoto' | 'sendDocument' | 'sendVideo'): Promise<ApiResult> {
+async function sendMediaAction(formData: FormData, endpoint: 'sendPhoto' | 'sendDocument' | 'sendVideo'): Promise<ApiResult<TelegramMessage>> {
   const token = formData.get('token') as string;
   
   if (!token) {
     return { success: false, error: "Bot token is missing." };
   }
 
-  // Remove token from formData before sending to Telegram for security if it were to be misused,
-  // though Telegram API doesn't use 'token' field in body. It's for our internal use.
-  // However, it's better to construct a new FormData for Telegram.
   const telegramFormData = new FormData();
   const mediaType = endpoint.substring(4).toLowerCase(); // photo, document, video
 
   for (const [key, value] of formData.entries()) {
-    if (key !== 'token') { // Don't forward our internal token field
+    if (key !== 'token') { 
       if (key === mediaType && value instanceof File) {
          telegramFormData.append(mediaType, value, value.name);
       } else if (value !== null && value !== undefined) {
-        // Ensure replyToMessageId is parsed to integer if present
         if (key === 'replyToMessageId') {
             const numericId = parseInt(value as string, 10);
-            if(!isNaN(numericId)) telegramFormData.append(key, numericId.toString());
-        } else {
+            if(!isNaN(numericId)) telegramFormData.append('reply_parameters', JSON.stringify({message_id: numericId})); // Updated for reply_parameters
+        } else if (key === 'parseMode') {
+            telegramFormData.append('caption_parse_mode', value as string); // For caption specifically
+        } else if (key === 'chatId'){
+            telegramFormData.append('chat_id', value as string);
+        }
+         else {
             telegramFormData.append(key, value as string);
         }
       }
@@ -80,12 +81,12 @@ async function sendMediaAction(formData: FormData, endpoint: 'sendPhoto' | 'send
   try {
     const response = await fetch(`${TELEGRAM_API_BASE}${token}/${endpoint}`, {
       method: 'POST',
-      body: telegramFormData, // Fetch handles multipart/form-data Content-Type
+      body: telegramFormData, 
     });
 
     const data = await response.json();
     if (data.ok) {
-      return { success: true, data: data.result };
+      return { success: true, data: data.result as TelegramMessage };
     }
     return { success: false, error: data.description || `Telegram API error: ${response.status}` };
   } catch (error) {
@@ -94,14 +95,14 @@ async function sendMediaAction(formData: FormData, endpoint: 'sendPhoto' | 'send
   }
 }
 
-export async function sendPhotoAction(formData: FormData): Promise<ApiResult> {
+export async function sendPhotoAction(formData: FormData): Promise<ApiResult<TelegramMessage>> {
   return sendMediaAction(formData, 'sendPhoto');
 }
 
-export async function sendDocumentAction(formData: FormData): Promise<ApiResult> {
+export async function sendDocumentAction(formData: FormData): Promise<ApiResult<TelegramMessage>> {
   return sendMediaAction(formData, 'sendDocument');
 }
 
-export async function sendVideoAction(formData: FormData): Promise<ApiResult> {
+export async function sendVideoAction(formData: FormData): Promise<ApiResult<TelegramMessage>> {
   return sendMediaAction(formData, 'sendVideo');
 }
