@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -14,6 +15,7 @@ import type { StoredToken } from "@/lib/types";
 import { Trash2, RefreshCw, Zap, ZapOff, AlertTriangle, HelpCircle, CheckCircle2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from 'date-fns';
+import { useState, useEffect } from 'react';
 
 interface TokenTableProps {
   tokens: StoredToken[];
@@ -42,6 +44,41 @@ const WebhookStatusIndicator: React.FC<{ status: StoredToken['webhookStatus'], i
     default:
       return <Badge variant="outline"><HelpCircle className="mr-1 h-3 w-3" />Unknown</Badge>;
   }
+};
+
+const FormattedLastActivityCell: React.FC<{ isoDateString?: string }> = ({ isoDateString }) => {
+  const [formattedDate, setFormattedDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isoDateString) {
+      try {
+        setFormattedDate(format(parseISO(isoDateString), 'PP pp'));
+      } catch (error) {
+        console.error("Error formatting last activity date:", error);
+        setFormattedDate('Invalid date');
+      }
+    } else {
+      setFormattedDate('N/A');
+    }
+  }, [isoDateString]);
+
+  if (formattedDate === null) {
+    return <span className="text-muted-foreground">Loading...</span>;
+  }
+  if (formattedDate === 'N/A' || formattedDate === 'Invalid date') {
+     return <span className="text-muted-foreground">{formattedDate}</span>;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-help">{formattedDate}</span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{isoDateString ? parseISO(isoDateString).toUTCString() : 'N/A'}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
 };
 
 
@@ -81,16 +118,7 @@ export function TokenTable({ tokens, onDeleteToken, onRefreshInfo, isLoadingToke
                   <WebhookStatusIndicator status={token.webhookStatus} isCurrent={token.isCurrentWebhook} />
                 </TableCell>
                 <TableCell>
-                  {token.lastActivity ? (
-                     <Tooltip>
-                        <TooltipTrigger asChild>
-                           <span className="cursor-help">{format(parseISO(token.lastActivity), 'PP pp')}</span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                           <p>{parseISO(token.lastActivity).toUTCString()}</p>
-                        </TooltipContent>
-                     </Tooltip>
-                  ) : 'N/A'}
+                  <FormattedLastActivityCell isoDateString={token.lastActivity} />
                 </TableCell>
                 <TableCell className="text-right space-x-2">
                   <Tooltip>

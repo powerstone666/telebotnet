@@ -1,17 +1,19 @@
+
 "use client";
 
 import type { TelegramMessage, TelegramPhotoSize } from "@/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { FileText, Image as ImageIcon, Video, Download, Reply, Bot } from "lucide-react";
 import { format, fromUnixTime } from 'date-fns';
 import Image from "next/image";
+import { useState, useEffect } from 'react';
 
 interface MessageCardProps {
   message: TelegramMessage;
   onReply: (message: TelegramMessage) => void;
-  onDownloadFile?: (fileId: string, fileName: string | undefined, token?: string) => void; // Token might be needed if stored per message
+  onDownloadFile?: (fileId: string, fileName: string | undefined, token?: string) => void;
 }
 
 function getInitials(name: string = "") {
@@ -22,32 +24,45 @@ function getInitials(name: string = "") {
   return name.substring(0, 2).toUpperCase();
 }
 
-// Function to find the largest photo
 const getLargestPhoto = (photos?: TelegramPhotoSize[]): TelegramPhotoSize | undefined => {
   if (!photos || photos.length === 0) return undefined;
   return photos.reduce((largest, current) => (current.width * current.height > largest.width * largest.height ? current : largest));
 };
 
-// Placeholder for generating file URL - in real app this would hit an API endpoint
 const getFilePreviewUrl = (fileId: string, token: string | undefined) => {
-  if(!token) return "https://placehold.co/100x100.png?text=No+Token"; // Fallback if token not available
-  // This is a conceptual URL, actual display of images/videos requires fetching via /getFile and then the file itself
-  // For preview, it's complex without a backend to serve the image. Using placeholder.
-  // A real solution might involve an API route like /api/file-preview?file_id=...&token=...
+  if(!token) return "https://placehold.co/200x150.png?text=Preview";
   return `https://placehold.co/200x150.png?text=FilePreview`;
 };
 
 
 export function MessageCard({ message, onReply, onDownloadFile }: MessageCardProps) {
+  const [formattedDate, setFormattedDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (message.date) {
+      try {
+        setFormattedDate(format(fromUnixTime(message.date), 'PP pp'));
+      } catch (e) {
+        console.error("Error formatting message date", e);
+        setFormattedDate("Invalid date");
+      }
+    } else {
+      setFormattedDate(null); // Or some placeholder like 'Date unavailable'
+    }
+  }, [message.date]);
+
   const senderName = message.from?.first_name ? `${message.from.first_name} ${message.from.last_name || ''}`.trim() : (message.from?.username || 'Unknown User');
   const chatTitle = message.chat.title || message.chat.username || message.chat.first_name || 'Unknown Chat';
   const largestPhoto = getLargestPhoto(message.photo);
+  // The token finding logic for placeholder URL isn't strictly necessary if getFilePreviewUrl doesn't use the token.
+  // For now, it's left as is, assuming getFilePreviewUrl might be enhanced later.
+  // const tokenForPreview = message.sourceTokenId ? tokens.find(t => t.id === message.sourceTokenId)?.token : undefined;
+
 
   return (
     <Card className="shadow-sm hover:shadow-md transition-shadow duration-200">
       <CardHeader className="flex flex-row items-start space-x-3 p-4">
         <Avatar className="h-10 w-10 border">
-          {/* Future: Could try to fetch user profile photo if available */}
           <AvatarFallback>{getInitials(senderName)}</AvatarFallback>
         </Avatar>
         <div className="flex-1">
@@ -60,7 +75,7 @@ export function MessageCard({ message, onReply, onDownloadFile }: MessageCardPro
             )}
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            in {chatTitle} &bull; {format(fromUnixTime(message.date), 'PP pp')}
+            in {chatTitle} &bull; {formattedDate || 'Loading date...'}
           </p>
         </div>
       </CardHeader>
@@ -70,9 +85,8 @@ export function MessageCard({ message, onReply, onDownloadFile }: MessageCardPro
 
         {largestPhoto && (
           <div className="mt-2">
-             {/* Using placeholder due to complexity of serving actual Telegram images directly */}
             <Image 
-              src={getFilePreviewUrl(largestPhoto.file_id, message.sourceTokenId ? tokens.find(t => t.id === message.sourceTokenId)?.token : undefined)} 
+              src={getFilePreviewUrl(largestPhoto.file_id, undefined /* tokenForPreview */)} 
               alt={message.caption || "Sent photo"} 
               width={200} height={150} 
               className="rounded-md border object-cover"
