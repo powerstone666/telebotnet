@@ -7,13 +7,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCard } from '@/components/messages/MessageCard';
 import { ReplyModal } from '@/components/messages/ReplyModal';
+import { EditMessageModal } from '@/components/messages/EditMessageModal'; 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { useStoredTokens } from '@/lib/localStorage';
-import { downloadFileAction } from './actions';
-import { saveAs } from 'file-saver'; // For client-side saving
+import { downloadFileAction, deleteMessageAction } from './actions';
+import { saveAs } from 'file-saver'; 
 import { Loader2 } from 'lucide-react';
 
-// Helper hook for sessionStorage
+
 function useSessionStorageMessages(key: string, initialValue: TelegramMessage[]) {
   const [storedValue, setStoredValue] = useState<TelegramMessage[]>(initialValue);
 
@@ -24,7 +35,6 @@ function useSessionStorageMessages(key: string, initialValue: TelegramMessage[])
         if (item) {
           const parsedItems = JSON.parse(item);
           if (Array.isArray(parsedItems)) {
-            // Sort messages by date descending, new messages usually come first
             setStoredValue(parsedItems.sort((a, b) => b.date - a.date));
           } else {
              setStoredValue(initialValue);
@@ -44,7 +54,6 @@ function useSessionStorageMessages(key: string, initialValue: TelegramMessage[])
       const valueToStoreCallback = typeof value === 'function' ? value : () => value;
       setStoredValue(currentStoredValue => {
         const newUnsortedMessages = valueToStoreCallback(currentStoredValue);
-        // Keep unique messages, sort, and cap at 200
         const messageMap = new Map(newUnsortedMessages.map(msg => [`${msg.chat.id}-${msg.message_id}`, msg]));
         const uniqueSortedMessages = Array.from(messageMap.values())
                                         .sort((a, b) => b.date - a.date)
@@ -65,8 +74,11 @@ function useSessionStorageMessages(key: string, initialValue: TelegramMessage[])
 
 export default function MessageLogPage() {
   const [messages, setMessages] = useSessionStorageMessages('telematrix_webhook_messages', []);
-  const { tokens } = useStoredTokens(); // For finding token for reply/download
+  const { tokens } = useStoredTokens(); 
   const [replyingToMessage, setReplyingToMessage] = useState<TelegramMessage | null>(null);
+  const [editingMessage, setEditingMessage] = useState<TelegramMessage | null>(null);
+  const [deletingMessage, setDeletingMessage] = useState<TelegramMessage | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const { toast } = useToast();
   const [hasMounted, setHasMounted] = useState(false);
 
@@ -87,7 +99,6 @@ export default function MessageLogPage() {
   const addNewMessage = useCallback((newMessage: TelegramMessage) => {
     const enrichedNewMessage = enrichMessageWithBotInfo(newMessage);
     setMessages(prevMessages => {
-      // Add to start, then let setValue in hook handle sorting, uniqueness and capping
       return [enrichedNewMessage, ...prevMessages]; 
     });
     toast({ 
@@ -109,7 +120,6 @@ export default function MessageLogPage() {
           console.error("Error parsing message from localStorage event", e); 
         }
       } else if (event.key === 'telematrix_webhook_messages' && event.newValue) {
-        // If the whole list is updated by another tab (e.g. by Get Updates)
         try {
           const newMessagesArray = JSON.parse(event.newValue) as TelegramMessage[];
           if (Array.isArray(newMessagesArray)) {
@@ -132,9 +142,53 @@ export default function MessageLogPage() {
     setReplyingToMessage(message);
   };
 
-  const handleCloseReplyModal = () => {
-    setReplyingToMessage(null);
+  const handleEdit = (message: TelegramMessage) => {
+    setEditingMessage(message);
   };
+
+  const handleDeleteInitiate = (message: TelegramMessage) => {
+    setDeletingMessage(message);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingMessage || !deletingMessage.sourceTokenId) {
+      toast({ title: "Error", description: "Cannot delete message: missing information.", variant: "destructive"});
+      setIsDeleteConfirmOpen(false);
+      setDeletingMessage(null);
+      return;
+    }
+    const token = tokens.find(t => t.id === deletingMessage.sourceTokenId)?.token;
+    if (!token) {
+        toast({ title: "Token Error", description: "Bot token not found for deleting message.", variant: "destructive"});
+        setIsDeleteConfirmOpen(false);
+        setDeletingMessage(null);
+        return;
+    }
+    
+    const result = await deleteMessageAction(token, deletingMessage.chat.id, deletingMessage.message_id);
+    if (result.success) {
+      toast({ title: "Message Deleted", description: "The message has been successfully deleted."});
+      setMessages(prev => prev.filter(m => m.message_id !== deletingMessage.message_id || m.chat.id !== deletingMessage.chat.id));
+    } else {
+      toast({ title: "Failed to Delete Message", description: result.error, variant: "destructive"});
+    }
+    setIsDeleteConfirmOpen(false);
+    setDeletingMessage(null);
+  };
+
+  const handleMessageEdited = (editedMessageFull: TelegramMessage) => {
+    setMessages(prevMessages => 
+      prevMessages.map(msg => 
+        (msg.message_id === editedMessageFull.message_id && msg.chat.id === editedMessageFull.chat.id) 
+        ? { ...msg, ...enrichMessageWithBotInfo(editedMessageFull) } // enrich again as sourceTokenId might not be in editedMessageFull
+        : msg
+      )
+    );
+  };
+
+  const handleCloseReplyModal = () => setReplyingToMessage(null);
+  const handleCloseEditModal = () => setEditingMessage(null);
 
   const handleDownloadFile = async (fileId: string, fileNameFromMessage?: string, sourceTokenId?: string) => {
     if (!sourceTokenId) {
@@ -153,7 +207,7 @@ export default function MessageLogPage() {
         const result = await downloadFileAction(token, fileId);
         if (result.success && result.data) {
             const blob = new Blob([result.data.data], { type: result.data.mimeType || 'application/octet-stream' });
-            saveAs(blob, result.data.fileName || defaultFileName); // Use file-saver
+            saveAs(blob, result.data.fileName || defaultFileName); 
             toast({ title: "Download Complete", description: `${result.data.fileName || defaultFileName} downloaded.`});
         } else {
             toast({ title: "Download Failed", description: result.error || "Could not download file.", variant: "destructive"});
@@ -164,7 +218,6 @@ export default function MessageLogPage() {
     }
   };
   
-  // Enrich messages on initial load or when tokens change
   useEffect(() => {
     if (hasMounted && tokens.length > 0) {
       setMessages(currentMessages => currentMessages.map(enrichMessageWithBotInfo));
@@ -197,11 +250,13 @@ export default function MessageLogPage() {
           ) : (
             <ScrollArea className="h-[600px] p-1">
               <div className="space-y-4">
-                {messages.map((msg, index) => ( // Added index to key for potential date collisions if precision is low
+                {messages.map((msg, index) => ( 
                   <MessageCard
                     key={`${msg.message_id}-${msg.date}-${msg.chat.id}-${index}`}
                     message={msg}
                     onReply={handleReply}
+                    onEdit={handleEdit}
+                    onDelete={handleDeleteInitiate}
                     onDownloadFile={handleDownloadFile}
                   />
                 ))}
@@ -219,6 +274,33 @@ export default function MessageLogPage() {
           onClose={handleCloseReplyModal}
         />
       )}
+
+      {editingMessage && (
+        <EditMessageModal
+          message={editingMessage}
+          allTokens={tokens}
+          isOpen={!!editingMessage}
+          onClose={handleCloseEditModal}
+          onMessageEdited={handleMessageEdited}
+        />
+      )}
+
+      <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the message from the Telegram chat.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletingMessage(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete Message
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

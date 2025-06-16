@@ -52,7 +52,7 @@ export function DashboardClientLayout({ children }: { children: React.ReactNode 
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 py-4 md:hidden">
             <SidebarTrigger />
-            <div className="font-headline text-lg font-semibold">TeleTap</div>
+            <div className="font-headline text-lg font-semibold">TelebotNet</div>
           </header>
           <main className="flex-1 p-4 md:p-6">
             {children}

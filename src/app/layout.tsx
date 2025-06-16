@@ -4,7 +4,7 @@ import './globals.css';
 import { ClientOnlyToaster } from '@/components/ClientOnlyToaster'; // Updated import
 
 export const metadata: Metadata = {
-  title: 'TeleTap',
+  title: 'TelebotNet',
   description: 'Manage your Telegram bots with ease.',
 };
 

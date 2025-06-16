@@ -5,14 +5,16 @@ import type { TelegramMessage, TelegramPhotoSize } from "@/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { FileText, Image as ImageIcon, Video, Download, Reply, Bot, AlertCircle } from "lucide-react";
+import { FileText, Image as ImageIcon, Video, Download, Reply, Bot, AlertCircle, Pencil, Trash2 } from "lucide-react";
 import { format, fromUnixTime } from 'date-fns';
-import NextImage from "next/image"; // Renamed to avoid conflict with Lucide Icon
+import NextImage from "next/image"; 
 import { useState, useEffect } from 'react';
 
 interface MessageCardProps {
   message: TelegramMessage;
   onReply: (message: TelegramMessage) => void;
+  onEdit: (message: TelegramMessage) => void;
+  onDelete: (message: TelegramMessage) => void;
   onDownloadFile?: (fileId: string, fileName: string | undefined, sourceTokenId?: string) => void;
 }
 
@@ -28,11 +30,10 @@ const getLargestPhoto = (photos?: TelegramPhotoSize[]): TelegramPhotoSize | unde
   return photos.reduce((largest, current) => (current.width * current.height > largest.width * largest.height ? current : largest));
 };
 
-export function MessageCard({ message, onReply, onDownloadFile }: MessageCardProps) {
+export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile }: MessageCardProps) {
   const [formattedDate, setFormattedDate] = useState<string | null>(null);
 
   useEffect(() => {
-    // Ensure message.date is a valid number before formatting
     if (typeof message.date === 'number' && !isNaN(message.date)) {
       try {
         setFormattedDate(format(fromUnixTime(message.date), 'PP pp'));
@@ -49,13 +50,13 @@ export function MessageCard({ message, onReply, onDownloadFile }: MessageCardPro
   const chatTitle = message.chat.title || message.chat.username || (message.chat.type === 'private' ? `${message.chat.first_name || ''} ${message.chat.last_name || ''}`.trim() : 'Unknown Chat');
   const largestPhoto = getLargestPhoto(message.photo);
   const canDownload = onDownloadFile && message.sourceTokenId;
+  const canManage = message.sourceTokenId; // Assume if sourceTokenId is present, we can attempt management actions
 
   const handleDownload = (fileId?: string, fileName?: string) => {
     if (canDownload && fileId) {
       onDownloadFile(fileId, fileName, message.sourceTokenId);
     } else if (!message.sourceTokenId) {
       console.warn("Download attempted without sourceTokenId for message:", message.message_id);
-      // Optionally show a toast or alert to the user
     }
   };
 
@@ -75,7 +76,7 @@ export function MessageCard({ message, onReply, onDownloadFile }: MessageCardPro
             )}
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            in {chatTitle} &bull; {formattedDate || 'Loading date...'}
+            in {chatTitle} &bull; {formattedDate || 'Loading date...'} {message.edit_date && `(edited ${format(fromUnixTime(message.edit_date), 'PP pp')})`}
           </p>
         </div>
       </CardHeader>
@@ -132,9 +133,15 @@ export function MessageCard({ message, onReply, onDownloadFile }: MessageCardPro
           </p>
         )}
       </CardContent>
-      <CardFooter className="px-4 py-3 border-t flex justify-start">
-        <Button variant="ghost" size="sm" onClick={() => onReply(message)}>
+      <CardFooter className="px-4 py-3 border-t flex justify-start gap-1">
+        <Button variant="ghost" size="sm" onClick={() => onReply(message)} disabled={!canManage}>
           <Reply className="mr-1 h-4 w-4" /> Reply
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => onEdit(message)} disabled={!canManage || !message.text}> {/* Only allow edit for text messages for simplicity */}
+          <Pencil className="mr-1 h-4 w-4" /> Edit
+        </Button>
+        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90" onClick={() => onDelete(message)} disabled={!canManage}>
+          <Trash2 className="mr-1 h-4 w-4" /> Delete
         </Button>
       </CardFooter>
     </Card>
