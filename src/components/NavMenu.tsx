@@ -6,14 +6,13 @@ import { usePathname } from 'next/navigation';
 import {
   Users,
   MessageSquareText,
-  Settings2,
   Cable,
-  DownloadCloud,
-  Send,
   Activity,
+  Send,
   KeyRound,
   Group,
-  Info, // Added Info icon
+  Info,
+  Wrench, // Added Wrench icon for Bot Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -31,8 +30,9 @@ const navItems = [
   { href: '/dashboard/message-log', label: 'Message Log', icon: MessageSquareText },
   { href: '/dashboard/users', label: 'Users', icon: Users },
   { href: '/dashboard/groups', label: 'Groups', icon: Group },
-  { href: '/dashboard/send-message', label: 'Send Message', icon: Send },
+  { href: '/dashboard/send-message', label: 'Send Message/Media', icon: Send },
   { href: '/dashboard/chat-user-info', label: 'Chat/User Info', icon: Info }, 
+  { href: '/dashboard/bot-settings', label: 'Bot Settings', icon: Wrench },
 ];
 
 export function NavMenu() {

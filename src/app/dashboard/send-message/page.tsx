@@ -2,7 +2,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,21 +18,52 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label"; // Added import
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useStoredTokens } from '@/lib/localStorage';
-import type { SendMessageFormData } from '@/lib/types';
-import { sendMessageAction } from './actions';
+import type { MessageType } from '@/lib/types'; 
+import { sendMessageAction, sendPhotoAction, sendDocumentAction, sendVideoAction } from './actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, SendHorizontal } from "lucide-react";
-import { useState } from "react";
+import { Loader2, SendHorizontal, Paperclip } from "lucide-react";
+import { useState, useRef } from "react";
+
+const MAX_FILE_SIZE_MB = 50;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const sendMessageFormSchema = z.object({
   tokenId: z.string().min(1, "Please select a bot token."),
   chatId: z.string().min(1, "Chat ID is required."),
-  text: z.string().min(1, "Message text cannot be empty.").max(4096, "Message is too long."),
+  messageType: z.custom<MessageType>(val => ['Text', 'Photo', 'Document', 'Video'].includes(val as string), {
+    message: "Please select a message type.",
+  }),
+  text: z.string().max(4096, "Text/caption is too long.").optional(),
+  mediaFile: z.custom<File>(val => val instanceof File, "Please select a file.").optional(),
   replyToMessageId: z.string().optional(),
   parseMode: z.enum(['MarkdownV2', 'HTML', 'Markdown']).optional(),
+}).refine(data => {
+  if (data.messageType === 'Text') {
+    return !!data.text && data.text.trim() !== "";
+  }
+  return true;
+}, {
+  message: "Message text cannot be empty for Text type.",
+  path: ["text"],
+}).refine(data => {
+  if (data.messageType !== 'Text') {
+    return !!data.mediaFile;
+  }
+  return true;
+}, {
+  message: "A file is required for Photo, Document, or Video types.",
+  path: ["mediaFile"],
+}).refine(data => {
+    if (data.mediaFile && data.mediaFile.size > MAX_FILE_SIZE_BYTES) {
+        return false;
+    }
+    return true;
+}, {
+    message: `File size must be less than ${MAX_FILE_SIZE_MB} MB.`,
+    path: ["mediaFile"],
 });
 
 type SendMessageFormValues = z.infer<typeof sendMessageFormSchema>;
@@ -42,17 +73,21 @@ export default function SendMessagePage() {
   const { toast } = useToast();
   const [isSending, setIsSending] = useState(false);
   const [enableMarkdown, setEnableMarkdown] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<SendMessageFormValues>({
     resolver: zodResolver(sendMessageFormSchema),
     defaultValues: {
       tokenId: "",
       chatId: "",
+      messageType: "Text",
       text: "",
       replyToMessageId: "",
     },
   });
   
+  const watchedMessageType = form.watch("messageType");
+
   async function onSubmit(data: SendMessageFormValues) {
     setIsSending(true);
     const tokenToUse = tokens.find(t => t.id === data.tokenId)?.token;
@@ -62,20 +97,58 @@ export default function SendMessagePage() {
       return;
     }
 
-    const payload = {
+    let result;
+    const formData = new FormData();
+    formData.append('token', tokenToUse);
+    formData.append('chatId', data.chatId);
+    if (data.replyToMessageId) formData.append('replyToMessageId', data.replyToMessageId);
+    if (enableMarkdown && data.parseMode) formData.append('parseMode', data.parseMode);
+
+    if (data.messageType === 'Text') {
+      if (!data.text) { // Should be caught by Zod, but as a safeguard
+        toast({ title: "Input Error", description: "Text message cannot be empty.", variant: "destructive" });
+        setIsSending(false);
+        return;
+      }
+      result = await sendMessageAction({
         token: tokenToUse,
         chatId: data.chatId,
         text: data.text,
         replyToMessageId: data.replyToMessageId || undefined,
-        parseMode: enableMarkdown ? 'MarkdownV2' : undefined, // Default to MarkdownV2 if enabled
-    };
+        parseMode: enableMarkdown ? data.parseMode || 'MarkdownV2' : undefined,
+      });
+    } else if (data.mediaFile) {
+      formData.append(data.messageType.toLowerCase(), data.mediaFile);
+      if (data.text) formData.append('caption', data.text); // Text is caption for media
 
-    const result = await sendMessageAction(payload);
+      switch (data.messageType) {
+        case 'Photo':
+          result = await sendPhotoAction(formData);
+          break;
+        case 'Document':
+          result = await sendDocumentAction(formData);
+          break;
+        case 'Video':
+          result = await sendVideoAction(formData);
+          break;
+        default:
+          toast({ title: "Invalid Message Type", variant: "destructive" });
+          setIsSending(false);
+          return;
+      }
+    } else {
+      toast({ title: "File Missing", description: `A file is required for ${data.messageType} type.`, variant: "destructive" });
+      setIsSending(false);
+      return;
+    }
+
     setIsSending(false);
 
     if (result.success) {
       toast({ title: "Message Sent", description: "Your message has been sent successfully." });
-      form.resetField("text"); // Keep token and chat ID
+      form.resetField("text");
+      if (data.messageType !== 'Text') form.resetField("mediaFile");
+      if (fileInputRef.current) fileInputRef.current.value = ""; // Clear file input
     } else {
       toast({ title: "Failed to Send Message", description: result.error, variant: "destructive" });
     }
@@ -88,16 +161,16 @@ export default function SendMessagePage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-headline font-bold tracking-tight">Send Message</h1>
+        <h1 className="text-3xl font-headline font-bold tracking-tight">Send Message or Media</h1>
         <p className="text-muted-foreground">
-          Compose and send messages to any chat using one of your configured bots.
+          Compose and send text messages, photos, documents, or videos using one of your configured bots.
         </p>
       </div>
 
       <Card className="max-w-2xl mx-auto">
         <CardHeader>
           <CardTitle>Compose Message</CardTitle>
-          <CardDescription>Select a bot, specify the recipient, and write your message.</CardDescription>
+          <CardDescription>Select a bot, recipient, message type, and content.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -144,12 +217,71 @@ export default function SendMessagePage() {
 
               <FormField
                 control={form.control}
+                name="messageType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Message Type</FormLabel>
+                    <Select onValueChange={(value) => {
+                      field.onChange(value as MessageType);
+                      form.setValue("mediaFile", undefined); // Reset file on type change
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select message type..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Text">Text</SelectItem>
+                        <SelectItem value="Photo">Photo</SelectItem>
+                        <SelectItem value="Document">Document</SelectItem>
+                        <SelectItem value="Video">Video</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              {watchedMessageType !== "Text" && (
+                <FormField
+                  control={form.control}
+                  name="mediaFile"
+                  render={({ field: { onChange, value, ...restField } }) => (
+                    <FormItem>
+                      <FormLabel>Media File ({watchedMessageType})</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="file" 
+                          ref={fileInputRef}
+                          onChange={(e) => onChange(e.target.files ? e.target.files[0] : undefined)} 
+                          {...restField}
+                          accept={
+                            watchedMessageType === 'Photo' ? 'image/*' :
+                            watchedMessageType === 'Video' ? 'video/*' :
+                            undefined /* all for document */
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>Max file size: {MAX_FILE_SIZE_MB}MB. The file will be uploaded when you click send.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              <FormField
+                control={form.control}
                 name="text"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Message Text</FormLabel>
+                    <FormLabel>{watchedMessageType === "Text" ? "Message Text" : "Caption (Optional)"}</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Type your message here..." className="min-h-[120px]" {...field} />
+                      <Textarea 
+                        placeholder={watchedMessageType === "Text" ? "Type your message here..." : "Type your caption here..."}
+                        className="min-h-[100px]" 
+                        {...field} 
+                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -160,12 +292,45 @@ export default function SendMessagePage() {
                 <Checkbox
                     id="enable-markdown"
                     checked={enableMarkdown}
-                    onCheckedChange={(checked) => setEnableMarkdown(Boolean(checked))}
+                    onCheckedChange={(checked) => {
+                      setEnableMarkdown(Boolean(checked));
+                      if (Boolean(checked)) {
+                        form.setValue('parseMode', 'MarkdownV2'); // Default to MarkdownV2 when enabled
+                      } else {
+                        form.setValue('parseMode', undefined);
+                      }
+                    }}
                 />
                 <Label htmlFor="enable-markdown" className="text-sm font-normal">
-                    Enable MarkdownV2 formatting
+                    Enable Parse Mode
                 </Label>
               </div>
+              
+              {enableMarkdown && (
+                 <FormField
+                    control={form.control}
+                    name="parseMode"
+                    render={({ field }) => (
+                    <FormItem className="mt-2">
+                        <FormLabel>Parse Mode</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value || 'MarkdownV2'}>
+                        <FormControl>
+                            <SelectTrigger>
+                            <SelectValue placeholder="Select parse mode..." />
+                            </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                            <SelectItem value="MarkdownV2">MarkdownV2</SelectItem>
+                            <SelectItem value="HTML">HTML</SelectItem>
+                            <SelectItem value="Markdown">Markdown (Legacy)</SelectItem>
+                        </SelectContent>
+                        </Select>
+                        <FormDescription>Note: Ensure your text/caption adheres to the selected formatting rules.</FormDescription>
+                        <FormMessage />
+                    </FormItem>
+                    )}
+                />
+              )}
 
 
               <FormField
@@ -184,8 +349,8 @@ export default function SendMessagePage() {
               
               <Button type="submit" disabled={isSending || tokens.length === 0} className="w-full">
                 {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <SendHorizontal className="mr-2 h-4 w-4" />
-                Send Message
+                {watchedMessageType !== "Text" ? <Paperclip className="mr-2 h-4 w-4" /> : <SendHorizontal className="mr-2 h-4 w-4" /> }
+                Send {watchedMessageType}
               </Button>
             </form>
           </Form>

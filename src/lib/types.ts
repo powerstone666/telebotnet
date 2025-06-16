@@ -1,3 +1,4 @@
+
 // src/lib/types.ts
 
 export interface BotInfo {
@@ -32,7 +33,7 @@ export interface TelegramUser {
 
 export interface TelegramChatPermissions {
   can_send_messages?: boolean;
-  can_send_media_messages?: boolean; // Use this field for specific media types if available
+  can_send_media_messages?: boolean; 
   can_send_audios?: boolean;
   can_send_documents?: boolean;
   can_send_photos?: boolean;
@@ -53,19 +54,18 @@ export interface TelegramChat {
   type: 'private' | 'group' | 'supergroup' | 'channel';
   title?: string;
   username?: string;
-  first_name?: string; // For private chats
-  last_name?: string; // For private chats
+  first_name?: string; 
+  last_name?: string; 
   is_forum?: boolean;
   description?: string;
   invite_link?: string;
   permissions?: TelegramChatPermissions;
-  photo?: { // ChatPhoto
+  photo?: { 
     small_file_id: string;
     small_file_unique_id: string;
     big_file_id: string;
     big_file_unique_id: string;
   };
-  // other fields like pinned_message, slow_mode_delay etc. can be added
 }
 
 
@@ -130,7 +130,7 @@ export interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
   sender_chat?: TelegramChat;
-  date: number; // Unix time
+  date: number; 
   chat: TelegramChat;
   forward_from?: TelegramUser;
   forward_from_chat?: TelegramChat;
@@ -153,9 +153,7 @@ export interface TelegramMessage {
   video?: TelegramVideo;
   caption?: string;
   caption_entities?: TelegramMessageEntity[];
-
-  // Custom fields for UI
-  sourceTokenId?: string; // ID of the StoredToken
+  sourceTokenId?: string; 
   botUsername?: string;
 }
 
@@ -165,17 +163,6 @@ export interface TelegramUpdate {
   edited_message?: TelegramMessage;
   channel_post?: TelegramMessage;
   edited_channel_post?: TelegramMessage;
-  // Add other update types if needed:
-  // inline_query?: InlineQuery;
-  // chosen_inline_result?: ChosenInlineResult;
-  // callback_query?: CallbackQuery;
-  // shipping_query?: ShippingQuery;
-  // pre_checkout_query?: PreCheckoutQuery;
-  // poll?: Poll;
-  // poll_answer?: PollAnswer;
-  // my_chat_member?: ChatMemberUpdated;
-  // chat_member?: ChatMemberUpdated;
-  // chat_join_request?: ChatJoinRequest;
 }
 
 export interface WebhookInfo {
@@ -190,12 +177,16 @@ export interface WebhookInfo {
   allowed_updates?: string[];
 }
 
+export type MessageType = 'Text' | 'Photo' | 'Document' | 'Video';
+
 export interface SendMessageFormData {
-  chatId: string;
-  text: string;
   tokenId: string;
-  parseMode?: 'MarkdownV2' | 'HTML' | 'Markdown';
+  chatId: string;
+  messageType: MessageType;
+  text?: string; // Used for text message or caption for media
+  mediaFile?: File;
   replyToMessageId?: string;
+  parseMode?: 'MarkdownV2' | 'HTML' | 'Markdown';
 }
 
 export interface WebhookOperationParams {
@@ -213,7 +204,6 @@ export interface ApiResult<T = any> {
   error?: string;
 }
 
-// Types for Chat/User Info Page
 export type ChatMemberStatus =
   | 'creator'
   | 'administrator'
@@ -251,7 +241,6 @@ export interface ChatMemberOwner extends BaseChatMember {
 export interface ChatMemberAdministrator extends BaseChatMember {
   status: 'administrator';
   can_be_edited: boolean;
-  // Includes all fields from ChatAdministratorRights
   is_anonymous: boolean;
   can_manage_chat: boolean;
   can_delete_messages: boolean;
@@ -288,7 +277,7 @@ export interface ChatMemberRestricted extends BaseChatMember {
   can_invite_users: boolean;
   can_pin_messages: boolean;
   can_manage_topics: boolean;
-  until_date: number; // Unix time
+  until_date: number; 
 }
 
 export interface ChatMemberLeft extends BaseChatMember {
@@ -297,7 +286,7 @@ export interface ChatMemberLeft extends BaseChatMember {
 
 export interface ChatMemberBanned extends BaseChatMember {
   status: 'kicked';
-  until_date: number; // Unix time when the user will be unbanned
+  until_date: number; 
 }
 
 export type ChatMember =
@@ -311,6 +300,11 @@ export type ChatMember =
 export interface ChatUserInfoFormData {
   tokenId: string;
   targetId: string;
-  secondaryId?: string; // e.g. User ID for getChatMember
+  secondaryId?: string; 
   operation: 'getChat' | 'getChatMember' | 'getChatAdministrators';
+}
+
+export interface BotCommand {
+  command: string;
+  description: string;
 }

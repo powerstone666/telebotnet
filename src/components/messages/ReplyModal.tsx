@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { StoredToken, TelegramMessage } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { sendMessageAction } from '@/app/dashboard/send-message/actions';
-import { Loader2, SendHorizonal } from "lucide-react"; // Corrected icon name
+import { Loader2, SendHorizontal } from "lucide-react"; 
 
 interface ReplyModalProps {
   message: TelegramMessage;
@@ -35,15 +35,13 @@ export function ReplyModal({ message, allTokens, isOpen, onClose }: ReplyModalPr
 
   useEffect(() => {
     if (isOpen) {
-      // Reset reply text when modal opens for a new message
       setReplyText("");
-      // Pre-select token logic
       if (message.sourceTokenId && allTokens.find(t => t.id === message.sourceTokenId)) {
         setSelectedTokenId(message.sourceTokenId);
       } else if (allTokens.length === 1) {
         setSelectedTokenId(allTokens[0].id);
       } else {
-        setSelectedTokenId(undefined); // Force user selection
+        setSelectedTokenId(undefined); 
       }
     }
   }, [isOpen, message, allTokens]);
@@ -70,13 +68,12 @@ export function ReplyModal({ message, allTokens, isOpen, onClose }: ReplyModalPr
       chatId: message.chat.id.toString(),
       text: replyText,
       replyToMessageId: message.message_id.toString(),
-      // parseMode can be added here if needed
     });
     setIsSending(false);
 
     if (result.success) {
       toast({ title: "Reply Sent", description: "Your reply has been sent successfully." });
-      onClose(); // Close modal on success
+      onClose(); 
     } else {
       toast({ title: "Failed to Send Reply", description: result.error, variant: "destructive" });
     }
@@ -137,7 +134,7 @@ export function ReplyModal({ message, allTokens, isOpen, onClose }: ReplyModalPr
             </Button>
           </DialogClose>
           <Button type="submit" onClick={handleSubmitReply} disabled={isSending || !replyText.trim() || !selectedTokenId}>
-            {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SendHorizonal className="mr-2 h-4 w-4" />}
+            {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SendHorizontal className="mr-2 h-4 w-4" />}
             Send Reply
           </Button>
         </DialogFooter>
