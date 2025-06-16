@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -19,14 +20,15 @@ export default function WebhookOperationsPage() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [webhookBaseUrl, setWebhookBaseUrl] = useState('');
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
-    // Attempt to get the app's base URL for the webhook
     if (typeof window !== 'undefined') {
       const currentBaseUrl = `${window.location.protocol}//${window.location.host}`;
       setWebhookBaseUrl(currentBaseUrl);
       setWebhookUrl(`${currentBaseUrl}/api/webhook`);
     }
+    setHasMounted(true);
   }, []);
 
   const handleSelectToken = (tokenId: string, checked: boolean) => {
@@ -90,9 +92,6 @@ export default function WebhookOperationsPage() {
          if (result.success) {
           updateToken(token.id, { webhookStatus: 'unset', lastWebhookSetAttempt: new Date().toISOString(), isCurrentWebhook: false });
         } else {
-          // Webhook might already be unset, or it could be a real failure.
-          // For simplicity, mark as failed if error, or unset if Telegram says it's already not set (e.g. specific error message)
-          // This part might need more nuanced error handling based on Telegram's actual responses.
           updateToken(token.id, { webhookStatus: 'failed', lastWebhookSetAttempt: new Date().toISOString() });
         }
         return { botName: token.botInfo?.username || token.id, ...result };
@@ -176,28 +175,37 @@ export default function WebhookOperationsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Input
-            type="url"
-            placeholder="https://your-app-domain.com/api/webhook"
-            value={webhookUrl}
-            onChange={(e) => setWebhookUrl(e.target.value)}
-            disabled={isProcessing}
-          />
-          {!webhookUrl.startsWith('https://') && webhookUrl.length > 0 && (
-             <p className="text-sm text-destructive mt-2 flex items-center"><AlertTriangle className="h-4 w-4 mr-1" /> Webhook URL must use HTTPS.</p>
+          {hasMounted ? (
+            <>
+              <Input
+                type="url"
+                placeholder="https://your-app-domain.com/api/webhook"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                disabled={isProcessing}
+              />
+              {!webhookUrl.startsWith('https://') && webhookUrl.length > 0 && (
+                 <p className="text-sm text-destructive mt-2 flex items-center"><AlertTriangle className="h-4 w-4 mr-1" /> Webhook URL must use HTTPS.</p>
+              )}
+               <p className="text-xs text-muted-foreground mt-1">
+                Your current app's webhook endpoint should be: <code>{webhookBaseUrl}/api/webhook</code>
+              </p>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <div className="h-10 bg-muted rounded-md animate-pulse w-full" />
+              <div className="h-4 bg-muted rounded-md animate-pulse w-3/4" />
+            </div>
           )}
-           <p className="text-xs text-muted-foreground mt-1">
-            Your current app's webhook endpoint should be: <code>{webhookBaseUrl}/api/webhook</code>
-          </p>
         </CardContent>
       </Card>
 
       <div className="flex flex-col sm:flex-row gap-4">
-        <Button onClick={handleSetWebhooks} disabled={isProcessing || selectedTokenIds.length === 0 || !webhookUrl} className="flex-1">
+        <Button onClick={handleSetWebhooks} disabled={!hasMounted || isProcessing || selectedTokenIds.length === 0 || !webhookUrl} className="flex-1">
           {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Set Webhook ({selectedTokenIds.length})
         </Button>
-        <Button onClick={handleDeleteWebhooks} variant="destructive" disabled={isProcessing || selectedTokenIds.length === 0} className="flex-1">
+        <Button onClick={handleDeleteWebhooks} variant="destructive" disabled={!hasMounted || isProcessing || selectedTokenIds.length === 0} className="flex-1">
           {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Delete Webhook ({selectedTokenIds.length})
         </Button>
