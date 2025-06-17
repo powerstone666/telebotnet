@@ -35,12 +35,13 @@ import { Input } from "@/components/ui/input"; // Added Input
 import { useLocalStorageMessagesWithExpiry } from '@/hooks/useLocalStorageMessagesWithExpiry'; // Import the new hook
 
 const MESSAGE_EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000; // 1 day
+const initialMessagesForHook: TelegramMessage[] = []; // Define stable initial value
 
 export default function MessageLogPage() {
   const { tokens } = useStoredTokens(); 
   const [messages, setMessages, clearMessages, isLoadingMessages] = useLocalStorageMessagesWithExpiry(
     'telematrix_webhook_messages_v2', 
-    [], 
+    initialMessagesForHook, // Use the stable initial value
     tokens, // Pass tokens here for the hook to use
     MESSAGE_EXPIRY_DURATION_MS
   );

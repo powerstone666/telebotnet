@@ -10,22 +10,28 @@ interface StoredMessageItem {
 export function useLocalStorageMessagesWithExpiry(
   key: string,
   initialValue: TelegramMessage[],
-  tokens: StoredToken[],
+  tokensProp: StoredToken[], 
   expiryDurationMs: number
 ) {
   const [isLoading, setIsLoading] = useState(true);
   const [storedValue, setStoredValue] = useState<TelegramMessage[]>(initialValue);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const enrichMessage = useCallback((msg: TelegramMessage): TelegramMessage => {
+  const tokensRef = useRef(tokensProp);
+  useEffect(() => {
+    tokensRef.current = tokensProp;
+  }, [tokensProp]);
+
+  // Helper function for enriching a single message, uses tokensRef for stability in callbacks
+  const enrichSingleMessageWithRef = useCallback((msg: TelegramMessage): TelegramMessage => {
     if (msg.sourceTokenId && !msg.botUsername) {
-      const token = tokens.find(t => t.id === msg.sourceTokenId);
+      const token = tokensRef.current.find(t => t.id === msg.sourceTokenId);
       if (token?.botInfo) {
         return { ...msg, botUsername: token.botInfo.username };
       }
     }
     return msg;
-  }, [tokens]);
+  }, []); // Empty dependency array as tokensRef.current is stable within a render pass
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -40,34 +46,32 @@ export function useLocalStorageMessagesWithExpiry(
         const now = Date.now();
         const validMessages = parsedItems
           .filter(storedItem => (now - storedItem.timestamp) <= expiryDurationMs)
-          .map(storedItem => enrichMessage(storedItem.data));
+          .map(storedItem => enrichSingleMessageWithRef(storedItem.data)); 
         
-        // Deduplicate and sort
         const messageMap = new Map(validMessages.map(msg => [`${msg.chat.id}-${msg.message_id}-${msg.sourceTokenId || 'unknown'}`, msg]));
         const uniqueSortedMessages = Array.from(messageMap.values())
                                         .sort((a, b) => (b.date || 0) - (a.date || 0))
-                                        .slice(0, 200); // Max 200
+                                        .slice(0, 200); 
         setStoredValue(uniqueSortedMessages);
       } else {
-        setStoredValue(initialValue.map(enrichMessage));
+        setStoredValue(initialValue.map(enrichSingleMessageWithRef)); 
       }
     } catch (error) {
       console.error(`Error reading ${key} from localStorage:`, error);
-      setStoredValue(initialValue.map(enrichMessage));
+      setStoredValue(initialValue.map(enrichSingleMessageWithRef)); 
     } finally {
       setIsLoading(false);
     }
-  }, [key, expiryDurationMs, enrichMessage, initialValue]);
+  }, [key, expiryDurationMs, initialValue, enrichSingleMessageWithRef]);
 
   const updateReactStateAndPersist = useCallback((value: TelegramMessage[] | ((val: TelegramMessage[]) => TelegramMessage[])) => {
     if (typeof window === 'undefined') return;
 
     setStoredValue(currentStoredValue => {
       const newUnsortedMessages = typeof value === 'function' ? value(currentStoredValue) : value;
-      const enrichedMessages = newUnsortedMessages.map(enrichMessage);
+      const enrichedMessages = newUnsortedMessages.map(enrichSingleMessageWithRef);
 
       const messageMap = new Map(enrichedMessages.map(msg => {
-        // Ensure key parts are present, provide defaults if necessary for map key
         const chatId = msg.chat?.id || 'unknown_chat';
         const messageId = msg.message_id || `temp_${Date.now()}_${Math.random()}`;
         const sourceTokenId = msg.sourceTokenId || 'unknown_source';
@@ -76,7 +80,7 @@ export function useLocalStorageMessagesWithExpiry(
       
       const uniqueSortedMessages = Array.from(messageMap.values())
                                       .sort((a, b) => (b.date || 0) - (a.date || 0))
-                                      .slice(0, 200); // Keep only the latest 200
+                                      .slice(0, 200);
 
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -85,7 +89,7 @@ export function useLocalStorageMessagesWithExpiry(
         try {
           const now = Date.now();
           const itemsToStore: StoredMessageItem[] = uniqueSortedMessages
-            .map(msg => ({ data: msg, timestamp: now })); // Update timestamp on save for all currently valid messages
+            .map(msg => ({ data: msg, timestamp: now })); 
           window.localStorage.setItem(key, JSON.stringify(itemsToStore));
         } catch (error) {
           console.error(`Error debounced setting ${key} in localStorage:`, error);
@@ -94,7 +98,7 @@ export function useLocalStorageMessagesWithExpiry(
 
       return uniqueSortedMessages;
     });
-  }, [key, enrichMessage]);
+  }, [key, enrichSingleMessageWithRef]); 
 
 
   const clearStoredMessages = useCallback(async (tokenIdsFilter?: string[]) => {
@@ -113,14 +117,13 @@ export function useLocalStorageMessagesWithExpiry(
             !storedItem.data.sourceTokenId || !tokenIdsFilter.includes(storedItem.data.sourceTokenId)
           );
         } else {
-          // No tokenIdsFilter means clear all (for this key)
           remainingItems = [];
         }
         window.localStorage.setItem(key, JSON.stringify(remainingItems));
       }
-      // Update React state
+      
       const validAndEnrichedMessages = remainingItems
-        .map(i => enrichMessage(i.data))
+        .map(i => enrichSingleMessageWithRef(i.data))
         .sort((a, b) => (b.date || 0) - (a.date || 0));
       setStoredValue(validAndEnrichedMessages);
 
@@ -129,7 +132,7 @@ export function useLocalStorageMessagesWithExpiry(
     } finally {
       setIsLoading(false);
     }
-  }, [key, expiryDurationMs, enrichMessage]);
+  }, [key, expiryDurationMs, enrichSingleMessageWithRef]); 
 
   return [storedValue, updateReactStateAndPersist, clearStoredMessages, isLoading] as const;
 }
