@@ -216,20 +216,6 @@ export default function TokenManagementPage() {
         </CardContent>
       </Card>
       */}
-      
-      {isLoadingTokens ? (
-         <div className="flex items-center justify-center py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="ml-2 text-muted-foreground">Loading tokens...</p>
-         </div>
-      ) : (
-        <TokenTable
-          tokens={tokens}
-          onDeleteToken={handleDeleteToken}
-          onRefreshInfo={refreshSingleTokenInfo}
-          isLoadingTokenMap={isLoadingTokenMap}
-        />
-      )}
     </div>
   );
 }
