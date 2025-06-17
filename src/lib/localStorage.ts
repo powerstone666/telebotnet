@@ -23,36 +23,52 @@ export function useStoredTokens() {
     setIsLoading(false);
   }, []);
 
-  const updateStoredTokens = useCallback((newTokens: StoredToken[] | ((prevState: StoredToken[]) => StoredToken[])) => {
+  const updateStoredTokens = useCallback((updater: (prevState: StoredToken[]) => StoredToken[]) => {
     try {
-      const valueToStore = typeof newTokens === 'function' ? newTokens(tokens) : newTokens;
-      setTokens(valueToStore);
-      window.localStorage.setItem(TOKENS_KEY, JSON.stringify(valueToStore));
+      setTokens(prevTokens => {
+        const newTokens = updater(prevTokens);
+        window.localStorage.setItem(TOKENS_KEY, JSON.stringify(newTokens));
+        return newTokens;
+      });
     } catch (error) {
       console.error("Error saving tokens to localStorage", error);
     }
-  }, [tokens]);
+  }, [setTokens]);
 
-  const addToken = useCallback((token: StoredToken) => {
+  const addToken = useCallback((tokenToAdd: StoredToken) => {
     updateStoredTokens(prevTokens => {
-      if (prevTokens.find(t => t.id === token.id || t.token === token.token)) {
+      if (prevTokens.find(t => t.id === tokenToAdd.id || t.token === tokenToAdd.token)) {
         // Prevent duplicate tokens by id or token string
+        console.log("Token already exists, not adding:", tokenToAdd.id);
         return prevTokens;
       }
-      return [...prevTokens, token];
+      console.log("Adding new token:", tokenToAdd.id);
+      return [...prevTokens, tokenToAdd];
     });
   }, [updateStoredTokens]);
 
-  const removeToken = useCallback((tokenId: string) => {
-    updateStoredTokens(prevTokens => prevTokens.filter(t => t.id !== tokenId));
+  const removeToken = useCallback((tokenIdToRemove: string) => {
+    updateStoredTokens(prevTokens => prevTokens.filter(t => t.id !== tokenIdToRemove));
   }, [updateStoredTokens]);
 
-  const updateToken = useCallback((tokenId: string, updates: Partial<StoredToken>) => {
+  const updateToken = useCallback((tokenIdToUpdate: string, updates: Partial<StoredToken>) => {
     updateStoredTokens(prevTokens => 
-      prevTokens.map(t => t.id === tokenId ? { ...t, ...updates } : t)
+      prevTokens.map(t => t.id === tokenIdToUpdate ? { ...t, ...updates } : t)
     );
   }, [updateStoredTokens]);
 
+  const setTokensStateAndStorage = useCallback((newTokensOrUpdater: StoredToken[] | ((prevState: StoredToken[]) => StoredToken[])) => {
+    setTokens(currentTokens => {
+        const valueToStore = typeof newTokensOrUpdater === 'function' ? newTokensOrUpdater(currentTokens) : newTokensOrUpdater;
+        try {
+            window.localStorage.setItem(TOKENS_KEY, JSON.stringify(valueToStore));
+        } catch (error) {
+            console.error("Error saving tokens to localStorage (direct set)", error);
+        }
+        return valueToStore;
+    });
+}, [setTokens]);
 
-  return { tokens, addToken, removeToken, updateToken, isLoading, setTokensDirectly: updateStoredTokens };
+
+  return { tokens, addToken, removeToken, updateToken, isLoading, setTokensDirectly: setTokensStateAndStorage };
 }

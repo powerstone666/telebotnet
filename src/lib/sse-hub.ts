@@ -1,4 +1,3 @@
-
 // lib/sse-hub.ts
 // IMPORTANT: This is a simplified in-memory hub. In a distributed serverless environment (like Vercel),
 // this hub's state (the 'clients' Map) will NOT be shared across different serverless function instances
