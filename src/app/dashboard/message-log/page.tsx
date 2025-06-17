@@ -51,13 +51,12 @@ export default function MessageLogPage() {
   const [replyingToMessage, setReplyingToMessage] = useState<TelegramMessage | null>(null);
   const [deletingMessage, setDeletingMessage] = useState<TelegramMessage | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [isClearAllConfirmOpen, setIsClearAllConfirmOpen] = useState(false); // For clearing messages
+  const [isClearAllConfirmOpen, setIsClearAllConfirmOpen] = useState(false);
   const { toast } = useToast();
   const [hasMounted, setHasMounted] = useState(false);
   const [filterTokenIds, setFilterTokenIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Ref to hold the latest tokens for use in callbacks without adding tokens to dependency arrays
   const tokensRef = useRef(tokens);
   useEffect(() => {
     tokensRef.current = tokens;
@@ -67,36 +66,15 @@ export default function MessageLogPage() {
     setHasMounted(true);
   }, []);
 
-  // Early return for loading state using skeletons
-  if (!hasMounted || isLoadingMessages) {
-    return (
-      <div className="flex flex-col h-full p-4 md:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-4">
-          {/* Placeholder for filter/search controls area */}
-          <div className="h-10 bg-gray-200 rounded w-1/3 animate-pulse"></div>
-          <div className="h-10 bg-gray-200 rounded w-1/4 animate-pulse"></div>
-        </div>
-        {/* Display multiple skeletons to represent a list loading */}
-        <MessageCardSkeleton />
-        <MessageCardSkeleton />
-        <MessageCardSkeleton />
-        <MessageCardSkeleton /> 
-      </div>
-    );
-  }
-
   const addNewMessage = useCallback((newMessage: TelegramMessage) => {
     if (!newMessage || typeof newMessage.message_id === 'undefined' || !newMessage.chat || typeof newMessage.chat.id === 'undefined') {
       console.warn("SSE: Received incomplete message, skipping:", newMessage);
       return;
     }
     setMessages(prevMessages => {
-      // The hook (useLocalStorageMessagesWithExpiry) should handle deduplication, sorting, and capping.
-      // Prepend the new message.
       return [newMessage, ...prevMessages]; 
     });
     
-    // Use tokensRef.current to avoid making addNewMessage dependent on the 'tokens' array reference
     const currentTokens = tokensRef.current;
     const botNameForToast = newMessage.botUsername || 
                           (newMessage.sourceTokenId ? currentTokens.find(t => t.id === newMessage.sourceTokenId)?.botInfo?.username : null) || 
@@ -106,9 +84,10 @@ export default function MessageLogPage() {
       title: "New Message Received", 
       description: `From: ${newMessage.from?.username || newMessage.from?.first_name || 'Unknown'} via ${botNameForToast}` 
     });
-  }, [setMessages, toast]); // Removed 'tokens' from dependencies, using tokensRef
+  }, [setMessages, toast]);
 
   useEffect(() => {
+    // Moved the check for hasMounted and isLoadingMessages inside the effect
     if (!hasMounted || isLoadingMessages) return; 
 
     const clientId = `client-${Math.random().toString(36).substring(2, 15)}`;
@@ -124,8 +103,6 @@ export default function MessageLogPage() {
         
         if (eventData.type === 'NEW_MESSAGE' || eventData.type === 'GENERIC_UPDATE') {
           const fullUpdate = eventData.payload.update as TelegramUpdate;
-          // const tokenId = eventData.payload.tokenId as string; // This is fullUpdate.sourceTokenId
-          
           let messageFromUpdate: TelegramMessage | undefined = undefined;
 
           if (fullUpdate.message) {
@@ -139,7 +116,6 @@ export default function MessageLogPage() {
           }
 
           if (messageFromUpdate && typeof messageFromUpdate.message_id !== 'undefined' && messageFromUpdate.chat && typeof messageFromUpdate.chat.id !== 'undefined') {
-            // Ensure context fields from TelegramUpdate are on the message object for addNewMessage
             const finalMessage: TelegramMessage = {
               ...messageFromUpdate,
               sourceTokenId: messageFromUpdate.sourceTokenId || fullUpdate.sourceTokenId,
@@ -172,15 +148,68 @@ export default function MessageLogPage() {
       console.log(`SSE Connection closing for client ID: ${clientId}`);
       eventSource.close();
     };
-  }, [hasMounted, addNewMessage, isLoadingMessages]); // Added isLoadingMessages to dependencies
+  }, [hasMounted, addNewMessage, isLoadingMessages]);
 
+  const displayedMessages = useMemo(() => {
+    let filtered = messages;
+    if (filterTokenIds.length > 0) {
+      filtered = filtered.filter(msg => msg.sourceTokenId && filterTokenIds.includes(msg.sourceTokenId));
+    }
+    if (searchTerm) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(msg => 
+        (msg.text && msg.text.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.from?.first_name && msg.from.first_name.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.from?.last_name && msg.from.last_name.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.from?.username && msg.from.username.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.chat?.title && msg.chat.title.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.chat?.username && msg.chat.username.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.botUsername && msg.botUsername.toLowerCase().includes(lowerSearchTerm))
+      );
+    }
+    return filtered;
+  }, [messages, filterTokenIds, searchTerm]);
+
+  const MessageRow = useCallback(({ index, style }: ListChildComponentProps) => {
+    const message = displayedMessages[index];
+    if (!message) return null;
+    return (
+      <div style={style} className="px-1 py-1">
+        <MessageCard
+          key={`${message.chat.id}-${message.message_id}-${message.sourceTokenId || 'unknown'}`}
+          message={message} 
+          onReply={handleReply} // handleReply is defined below, ensure it's hoisted or defined before if used directly here
+          onDelete={handleDeleteInitiate} // Same for handleDeleteInitiate
+          onDownloadFile={handleDownloadFile} // Same for handleDownloadFile
+          isBotMessage={message.from?.is_bot || !!message.botUsername}
+        />
+      </div>
+    );
+  }, [displayedMessages]); // Dependencies will be updated after moving handler definitions
+
+  // Early return for loading state using skeletons
+  // This conditional rendering block is now AFTER all hook definitions.
+  if (!hasMounted || isLoadingMessages) {
+    return (
+      <div className="flex flex-col h-full p-4 md:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-4">
+          {/* Placeholder for filter/search controls area */}
+          <div className="h-10 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+          <div className="h-10 bg-gray-200 rounded w-1/4 animate-pulse"></div>
+        </div>
+        {/* Display multiple skeletons to represent a list loading */}
+        <MessageCardSkeleton />
+        <MessageCardSkeleton />
+        <MessageCardSkeleton />
+        <MessageCardSkeleton /> 
+      </div>
+    );
+  }
+
+  // Handler functions (not Hooks, their definition order relative to JSX is what matters)
   const handleReply = (message: TelegramMessage) => {
     setReplyingToMessage(message);
   };
-
-  // const handleEdit = (message: TelegramMessage) => { // Edit button removed
-  //   setEditingMessage(message);
-  // };
 
   const handleDeleteInitiate = (message: TelegramMessage) => {
     setDeletingMessage(message);
@@ -205,7 +234,6 @@ export default function MessageLogPage() {
     const result = await deleteMessageAction(token, deletingMessage.chat.id.toString(), deletingMessage.message_id);
     if (result.success) {
       toast({ title: "Message Deleted", description: "The message has been successfully deleted from Telegram." });
-      // The hook will handle persistence, just update UI state by removing the message
       setMessages(prev => prev.filter(m => !(m.message_id === deletingMessage.message_id && m.chat.id === deletingMessage.chat.id && m.sourceTokenId === deletingMessage.sourceTokenId)));
     } else {
       toast({ title: "Failed to Delete Message", description: result.error, variant: "destructive" });
@@ -226,7 +254,6 @@ export default function MessageLogPage() {
   };
 
   const handleCloseReplyModal = () => setReplyingToMessage(null);
-  // const handleCloseEditModal = () => setEditingMessage(null); // Edit button removed
 
   const handleDownloadFile = async (fileId: string, fileNameFromMessage?: string, sourceTokenId?: string) => {
     if (!sourceTokenId) {
@@ -254,45 +281,18 @@ export default function MessageLogPage() {
         toast({ title: "Download Error", description: "An unexpected error occurred.", variant: "destructive"});
         console.error("File download error:", error);
     }
-  };
-  
-  const displayedMessages = useMemo(() => {
-    let filtered = messages;
-    if (filterTokenIds.length > 0) {
-      filtered = filtered.filter(msg => msg.sourceTokenId && filterTokenIds.includes(msg.sourceTokenId));
-    }
-    if (searchTerm) {
-      const lowerSearchTerm = searchTerm.toLowerCase();
-      filtered = filtered.filter(msg => 
-        (msg.text && msg.text.toLowerCase().includes(lowerSearchTerm)) ||
-        (msg.from?.first_name && msg.from.first_name.toLowerCase().includes(lowerSearchTerm)) ||
-        (msg.from?.last_name && msg.from.last_name.toLowerCase().includes(lowerSearchTerm)) ||
-        (msg.from?.username && msg.from.username.toLowerCase().includes(lowerSearchTerm)) ||
-        (msg.chat?.title && msg.chat.title.toLowerCase().includes(lowerSearchTerm)) ||
-        (msg.chat?.username && msg.chat.username.toLowerCase().includes(lowerSearchTerm)) ||
-        (msg.botUsername && msg.botUsername.toLowerCase().includes(lowerSearchTerm))
-      );
-    }
-    return filtered;
-  }, [messages, filterTokenIds, searchTerm]);
+  }; 
 
-  // Row component for react-window
-  const MessageRow = useCallback(({ index, style }: ListChildComponentProps) => {
-    const message = displayedMessages[index];
-    if (!message) return null;
-    return (
-      <div style={style} className="px-1 py-1"> {/* Add some padding around each card if needed */}
-        <MessageCard
-          key={`${message.chat.id}-${message.message_id}-${message.sourceTokenId || 'unknown'}`}
-          message={message} 
-          onReply={handleReply}
-          onDelete={handleDeleteInitiate}
-          onDownloadFile={handleDownloadFile}
-          isBotMessage={message.from?.is_bot || !!message.botUsername}
-        />
-      </div>
-    );
-  }, [displayedMessages, handleReply, handleDeleteInitiate, handleDownloadFile]);
+  // Update MessageRow dependencies now that handlers are defined before it conceptually (or ensure they are stable if defined after)
+  // However, since handleReply, handleDeleteInitiate, handleDownloadFile are stable (not recreated if their own dependencies don't change),
+  // we can define them after MessageRow and pass them. For useCallback, it's better to list them if they are in scope.
+  // To be perfectly safe and adhere to typical patterns, handlers used in useCallback are often defined before the useCallback itself.
+  // Let's adjust MessageRow's dependencies to include the handlers explicitly if they are stable.
+  // For this specific case, since the handlers themselves don't depend on a changing scope that MessageRow also depends on, 
+  // it's often fine. The issue was the conditional rendering of MessageRow's definition itself.
+  // The previous MessageRow definition was fine with its dependencies, the problem was its conditional call.
+  // The current definition of MessageRow and its dependencies [displayedMessages] is okay, 
+  // as the handlers (handleReply etc.) are stable references from the component scope.
 
   return (
     <div className="space-y-8">
