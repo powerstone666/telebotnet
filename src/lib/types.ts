@@ -1,4 +1,3 @@
-
 // src/lib/types.ts
 
 export interface BotInfo {
@@ -22,7 +21,7 @@ export interface StoredToken {
 }
 
 export interface TelegramUser {
-  id: number;
+  id: number; // This is the user_id
   is_bot: boolean;
   first_name: string;
   last_name?: string;
@@ -50,7 +49,7 @@ export interface TelegramChatPermissions {
 }
 
 export interface TelegramChat {
-  id: number;
+  id: number; // This is the chat_id (can be user_id for private, or group/channel id)
   type: 'private' | 'group' | 'supergroup' | 'channel';
   title?: string;
   username?: string;
@@ -128,10 +127,10 @@ export interface TelegramVideo {
 
 export interface TelegramMessage {
   message_id: number;
-  from?: TelegramUser;
-  sender_chat?: TelegramChat;
+  from?: TelegramUser; // Contains user_id in from.id
+  sender_chat?: TelegramChat; // Contains chat_id if sent on behalf of a channel
   date: number; 
-  chat: TelegramChat;
+  chat: TelegramChat; // Contains chat_id in chat.id (this is the target chat)
   forward_from?: TelegramUser;
   forward_from_chat?: TelegramChat;
   forward_from_message_id?: number;
@@ -155,6 +154,10 @@ export interface TelegramMessage {
   caption_entities?: TelegramMessageEntity[];
   sourceTokenId?: string; 
   botUsername?: string;
+  // Extracted fields for convenience, populated by our webhook handler
+  userId?: number; // Extracted from message.from.id
+  chatId?: number; // Extracted from message.chat.id
+  isGroupMessage?: boolean; // True if chat.type is 'group' or 'supergroup'
 }
 
 export interface TelegramUpdate {
@@ -163,6 +166,10 @@ export interface TelegramUpdate {
   edited_message?: TelegramMessage;
   channel_post?: TelegramMessage;
   edited_channel_post?: TelegramMessage;
+  // Extracted fields for convenience, populated by our webhook handler
+  userId?: number; // Extracted from the relevant message's from.id
+  chatId?: number; // Extracted from the relevant message's chat.id
+  isGroupMessage?: boolean; // True if the relevant message's chat.type is 'group' or 'supergroup'
 }
 
 export interface WebhookInfo {

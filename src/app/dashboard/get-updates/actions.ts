@@ -17,7 +17,40 @@ export async function getUpdatesAction(token: string, offset?: number): Promise<
     
     const data = await response.json();
     if (data.ok) {
-      return { success: true, data: data.result as TelegramUpdate[] };
+      const updates: TelegramUpdate[] = data.result.map((update: any) => {
+        let userId: number | undefined;
+        let chatId: number | undefined;
+        let isGroupMessage = false;
+
+        if (update.message) {
+          userId = update.message.from?.id;
+          chatId = update.message.chat?.id;
+          isGroupMessage = update.message.chat?.type === 'group' || update.message.chat?.type === 'supergroup';
+        } else if (update.edited_message) {
+          userId = update.edited_message.from?.id;
+          chatId = update.edited_message.chat?.id;
+          isGroupMessage = update.edited_message.chat?.type === 'group' || update.edited_message.chat?.type === 'supergroup';
+        } else if (update.channel_post) {
+          chatId = update.channel_post.chat?.id;
+          isGroupMessage = update.channel_post.chat?.type === 'channel'; 
+        } else if (update.edited_channel_post) {
+          chatId = update.edited_channel_post.chat?.id;
+          isGroupMessage = update.edited_channel_post.chat?.type === 'channel';
+        } else if (update.callback_query) {
+          userId = update.callback_query.from?.id;
+          chatId = update.callback_query.message?.chat?.id;
+          isGroupMessage = update.callback_query.message?.chat?.type === 'group' || update.callback_query.message?.chat?.type === 'supergroup';
+        }
+        // Add other update types as needed (inline_query, chosen_inline_result, etc.)
+
+        return {
+          ...update,
+          userId,
+          chatId,
+          isGroupMessage,
+        };
+      });
+      return { success: true, data: updates };
     }
     return { success: false, error: data.description || `Telegram API error: ${response.status}` };
   } catch (error) {

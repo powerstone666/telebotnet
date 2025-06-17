@@ -1,4 +1,4 @@
-import type { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server'; // NextResponse removed as not explicitly used for returning Response objects directly
 import type { TelegramUpdate, TelegramMessage } from '@/lib/types';
 import { broadcastMessage } from '@/lib/sse-hub';
 
@@ -11,7 +11,7 @@ import { broadcastMessage } from '@/lib/sse-hub';
 
 export async function POST(request: NextRequest, { params }: { params: { tokenId: string } }) {
   try {
-    const update = (await request.json()) as TelegramUpdate;
+    const rawUpdate = (await request.json()) as any; // Keep as any initially for flexibility
     const tokenId = params.tokenId;
 
     if (!tokenId) {
@@ -22,33 +22,81 @@ export async function POST(request: NextRequest, { params }: { params: { tokenId
         });
     }
 
-    let messageToStore: TelegramMessage | undefined = undefined;
+    let relevantMessage: TelegramMessage | undefined = undefined;
+    let updateType: string | undefined = undefined;
 
-    if (update.message) {
-      messageToStore = update.message;
-    } else if (update.edited_message) {
-      messageToStore = update.edited_message;
-    } else if (update.channel_post) {
-      messageToStore = update.channel_post;
-    } else if (update.edited_channel_post) {
-      messageToStore = update.edited_channel_post;
+    // Determine the actual message object and its type from the update
+    if (rawUpdate.message) {
+      relevantMessage = rawUpdate.message as TelegramMessage;
+      updateType = 'message';
+    } else if (rawUpdate.edited_message) {
+      relevantMessage = rawUpdate.edited_message as TelegramMessage;
+      updateType = 'edited_message';
+    } else if (rawUpdate.channel_post) {
+      relevantMessage = rawUpdate.channel_post as TelegramMessage;
+      updateType = 'channel_post';
+    } else if (rawUpdate.edited_channel_post) {
+      relevantMessage = rawUpdate.edited_channel_post as TelegramMessage;
+      updateType = 'edited_channel_post';
     }
+    // Add other update types as needed (e.g., callback_query, inline_query)
 
-    if (messageToStore) {
-      // Attach the tokenId to the message
-      (messageToStore as TelegramMessage).sourceTokenId = tokenId;
+    const processedUpdate: TelegramUpdate = { ...rawUpdate }; // Create a mutable copy
 
-      console.log(`Received webhook update for token ID: ${tokenId}, preparing to broadcast.`);
+    if (relevantMessage) {
+      // 1. Attach sourceTokenId
+      relevantMessage.sourceTokenId = tokenId;
+
+      // 2. Extract and attach userId
+      if (relevantMessage.from && relevantMessage.from.id) {
+        relevantMessage.userId = relevantMessage.from.id;
+        processedUpdate.userId = relevantMessage.from.id; // Also add to top-level update for convenience
+      } else if (relevantMessage.chat && relevantMessage.chat.type === 'channel' && relevantMessage.sender_chat && relevantMessage.sender_chat.id) {
+        // For channel posts, the 'from' might be missing, use sender_chat.id as chatId, userId might be less relevant or represent the channel itself
+        relevantMessage.userId = relevantMessage.sender_chat.id; // Or handle as a special channel ID
+        processedUpdate.userId = relevantMessage.sender_chat.id;
+      }
+
+      // 3. Extract and attach chatId and isGroupMessage
+      if (relevantMessage.chat && relevantMessage.chat.id) {
+        relevantMessage.chatId = relevantMessage.chat.id;
+        processedUpdate.chatId = relevantMessage.chat.id; // Also add to top-level update
+        if (relevantMessage.chat.type === 'group' || relevantMessage.chat.type === 'supergroup') {
+          relevantMessage.isGroupMessage = true;
+          processedUpdate.isGroupMessage = true; // Also add to top-level update
+        } else {
+          relevantMessage.isGroupMessage = false;
+          processedUpdate.isGroupMessage = false;
+        }
+      }
+
+      // Ensure the modified message is part of the processedUpdate
+      if (updateType) {
+        (processedUpdate as any)[updateType] = relevantMessage;
+      }
+
+      console.log(`Received webhook update for token ID: ${tokenId}, UserID: ${relevantMessage.userId}, ChatID: ${relevantMessage.chatId}, Group: ${relevantMessage.isGroupMessage}`);
       
-      // Broadcast the new message to all connected SSE clients
       broadcastMessage({
-        type: 'NEW_MESSAGE',
+        type: 'NEW_MESSAGE', // Or a more generic 'NEW_UPDATE' if handling more than just messages
         payload: {
           tokenId: tokenId,
-          message: messageToStore,
+          update: processedUpdate, // Send the whole processed update
+          // message: relevantMessage, // Deprecated: send the whole update for more context
         }
       });
-      console.log(`Broadcast initiated for message from token ID: ${tokenId}`);
+      console.log(`Broadcast initiated for update from token ID: ${tokenId}`);
+    } else {
+      // Handle other types of updates that don't have a direct 'message' structure if necessary
+      console.log(`Received non-message update for token ID: ${tokenId}`, rawUpdate);
+      // Optionally broadcast these too if your SSE clients expect them
+      broadcastMessage({
+        type: 'GENERIC_UPDATE', // Example type
+        payload: {
+          tokenId: tokenId,
+          update: processedUpdate, // Send the raw update or a processed version
+        }
+      });
     }
 
     return new Response(JSON.stringify({ success: true, message: "Update received and broadcast initiated" }), {
