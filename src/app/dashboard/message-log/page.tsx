@@ -378,7 +378,7 @@ export default function MessageLogPage() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" size="icon-sm" onClick={() => setIsClearAllConfirmOpen(true)} disabled={messages.length === 0}> {/* Custom size or adjust padding if needed */}
+          <Button variant="outline" size="sm" onClick={() => setIsClearAllConfirmOpen(true)} disabled={messages.length === 0}> {/* Changed size to sm */}
             <Trash2 className="h-4 w-4" />
             <span className="sr-only">Clear Messages</span>
           </Button>

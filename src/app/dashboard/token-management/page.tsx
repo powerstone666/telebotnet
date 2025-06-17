@@ -15,7 +15,7 @@ import { Loader2, Search, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { Button } from '@/components/ui/button'; // Added Button
 
 export default function TokenManagementPage() {
-  const { tokens, addToken, updateToken, isLoading: isLoadingTokens, refreshAllTokens } = useStoredTokens(); // Added refreshAllTokens
+  const { tokens, addToken, removeToken, updateToken, isLoading: isLoadingTokens } = useStoredTokens(); // Added removeToken
   const { toast } = useToast();
   const [isLoadingTokenMap, setIsLoadingTokenMap] = useState<Record<string, boolean>>({});
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
@@ -197,8 +197,8 @@ export default function TokenManagementPage() {
         <CardHeader>
           <CardTitle>Auto-Refresh Settings</CardTitle>
           <CardDescription>
-            Automatically refresh bot information and webhook status. 
-            <span className="block sm:inline mt-1 sm:mt-0">The manual refresh button above provides immediate updates.</span>
+            Periodically update bot information and webhook status in the background.
+            The manual refresh button in the table header provides on-demand updates.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -209,7 +209,7 @@ export default function TokenManagementPage() {
               onCheckedChange={setAutoRefreshEnabled}
               aria-label="Enable auto-refresh"
             />
-            <Label htmlFor="auto-refresh-switch">Enable Auto-Refresh</Label>
+            <Label htmlFor="auto-refresh-switch">Enable Background Auto-Refresh</Label>
           </div>
           {autoRefreshEnabled && (
             <div className="flex items-center space-x-2">
