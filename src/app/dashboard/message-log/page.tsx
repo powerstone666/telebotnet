@@ -32,13 +32,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLocalStorageMessagesWithExpiry } from '@/hooks/useLocalStorageMessagesWithExpiry';
-import { FixedSizeList as List, ListChildComponentProps } from 'react-window'; // Import react-window
-import AutoSizer from 'react-virtualized-auto-sizer'; // Import AutoSizer
-import { MessageCardSkeleton } from '@/components/messages/MessageCardSkeleton'; // Import the skeleton component
+// import { FixedSizeList as List, ListChildComponentProps } from 'react-window'; // Old import
+import { VariableSizeList as List, ListChildComponentProps } from 'react-window'; // Changed to VariableSizeList
+import AutoSizer from 'react-virtualized-auto-sizer';
+import { MessageCardSkeleton } from '@/components/messages/MessageCardSkeleton';
 
 const MESSAGE_EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000;
-const initialMessagesForHook: TelegramMessage[] = []; // Ensure this line is present
-const ESTIMATED_MESSAGE_HEIGHT = 320; // Updated from 200
+const initialMessagesForHook: TelegramMessage[] = [];
+const ESTIMATED_MESSAGE_HEIGHT = 320; // Keep this as a fallback/initial estimate
 
 export default function MessageLogPage() {
   const { tokens } = useStoredTokens();
@@ -61,6 +62,10 @@ export default function MessageLogPage() {
   useEffect(() => {
     tokensRef.current = tokens;
   }, [tokens]);
+
+  // Refs for VariableSizeList
+  const listRef = useRef<List>(null);
+  const itemHeights = useRef<{ [key: number]: number }>({});
 
   useEffect(() => {
     setHasMounted(true);
@@ -170,25 +175,71 @@ export default function MessageLogPage() {
     return filtered;
   }, [messages, filterTokenIds, searchTerm]);
 
+  // Callback for MessageRow to report its height
+  const setItemHeight = useCallback((index: number, size: number) => {
+    const currentSize = itemHeights.current[index];
+    if (currentSize !== size) {
+      itemHeights.current[index] = size;
+      // Force react-window to re-render items after this index has changed height
+      // This is crucial for VariableSizeList to update its layout
+      listRef.current?.resetAfterIndex(index, false); // 'false' means don't re-measure, just re-render
+    }
+  }, []); // itemHeights and listRef are refs, so they don't need to be in deps
+
   const MessageRow = useCallback(({ index, style }: ListChildComponentProps) => {
     const message = displayedMessages[index];
+    const rowRef = useRef<HTMLDivElement>(null);
+
+    // Use ResizeObserver to detect size changes of the row
+    useEffect(() => {
+      const element = rowRef.current;
+      if (!element) return;
+
+      const observer = new ResizeObserver(entries => {
+        for (let entry of entries) {
+          // Ensure we are getting the border-box height
+          const newHeight = entry.borderBoxSize && entry.borderBoxSize.length > 0 
+                            ? entry.borderBoxSize[0].blockSize 
+                            : entry.contentRect.height;
+          if (newHeight > 0) { // Only update if height is positive
+             setItemHeight(index, newHeight);
+          }
+        }
+      });
+
+      observer.observe(element);
+      return () => observer.unobserve(element);
+    }, [index, setItemHeight, message]); // Re-run if index or message changes (message for content change)
+
+
     if (!message) return null;
+    
+    // The outer div receives the style from react-window for positioning and sizing the row's "slot".
+    // The inner div (with rowRef) is what we measure. It should be free to expand to the full height of its content (MessageCard).
     return (
-      <div style={style} className="px-1 py-1">
-        <MessageCard
-          key={`${message.chat.id}-${message.message_id}-${message.sourceTokenId || 'unknown'}`}
-          message={message} 
-          onReply={handleReply} // handleReply is defined below, ensure it's hoisted or defined before if used directly here
-          onDelete={handleDeleteInitiate} // Same for handleDeleteInitiate
-          onDownloadFile={handleDownloadFile} // Same for handleDownloadFile
-          isBotMessage={message.from?.is_bot || !!message.botUsername}
-        />
+      <div style={style}> {/* Apply react-window style here for positioning */}
+        <div ref={rowRef} className="flex flex-col"> {/* Attach ref here for ResizeObserver, flex-col allows content to determine height */}
+          {/* The MessageCard and its padding are inside this div */}
+          <div className="px-1 py-1"> {/* Consistent padding for measurement */}
+              <MessageCard
+                key={`${message.chat.id}-${message.message_id}-${message.sourceTokenId || 'unknown'}-${index}`}
+                message={message} 
+                onReply={handleReply}
+                onDelete={handleDeleteInitiate}
+                onDownloadFile={handleDownloadFile}
+                isBotMessage={message.from?.is_bot || !!message.botUsername}
+              />
+          </div>
+        </div>
       </div>
     );
-  }, [displayedMessages]); // Dependencies will be updated after moving handler definitions
+  }, [displayedMessages, setItemHeight]);
 
-  // Early return for loading state using skeletons
-  // This conditional rendering block is now AFTER all hook definitions.
+  // Function for VariableSizeList to get item size
+  const getItemHeight = (index: number): number => {
+    return itemHeights.current[index] || ESTIMATED_MESSAGE_HEIGHT;
+  };
+  
   if (!hasMounted || isLoadingMessages) {
     return (
       <div className="flex flex-col h-full p-4 md:p-6 space-y-4">
@@ -283,19 +334,9 @@ export default function MessageLogPage() {
     }
   }; 
 
-  // Update MessageRow dependencies now that handlers are defined before it conceptually (or ensure they are stable if defined after)
-  // However, since handleReply, handleDeleteInitiate, handleDownloadFile are stable (not recreated if their own dependencies don't change),
-  // we can define them after MessageRow and pass them. For useCallback, it's better to list them if they are in scope.
-  // To be perfectly safe and adhere to typical patterns, handlers used in useCallback are often defined before the useCallback itself.
-  // Let's adjust MessageRow's dependencies to include the handlers explicitly if they are stable.
-  // For this specific case, since the handlers themselves don't depend on a changing scope that MessageRow also depends on, 
-  // it's often fine. The issue was the conditional rendering of MessageRow's definition itself.
-  // The current definition of MessageRow and its dependencies [displayedMessages] is okay, 
-  // as the handlers (handleReply etc.) are stable references from the component scope.
-
   return (
-    <div className="flex flex-col h-full p-4 md:p-6 lg:p-8 space-y-6"> {/* Increased padding and space-y */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2"> {/* Reduced mb slightly as space-y on parent handles overall spacing */}
+    <div className="flex flex-col h-full p-4 md:p-6 lg:p-8 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center">
             <Search className="mr-2 h-6 w-6 md:h-7 md:w-7" /> Message Log & Inspector
@@ -355,14 +396,16 @@ export default function MessageLogPage() {
         Displaying {displayedMessages.length} of {messages.length} messages (max 1000, older than 1 day are auto-removed).
       </CardDescription>
       {/* Virtualized List Container - ensure it takes up available space */}
-      <div className="flex-grow min-h-0"> {/* Added flex-grow and min-h-0 for AutoSizer */}
+      <div className="flex-grow min-h-0">
         <AutoSizer>
           {({ height, width }) => (
             <List
-              className="message-list-container" // Added a class for potential global styling
+              ref={listRef} // Assign ref to the List
+              className="message-list-container"
               height={height}
               itemCount={displayedMessages.length}
-              itemSize={ESTIMATED_MESSAGE_HEIGHT} // Adjust as needed, or make dynamic
+              itemSize={getItemHeight} // Use dynamic item size function
+              estimatedItemSize={ESTIMATED_MESSAGE_HEIGHT} // Provide an estimate
               width={width}
             >
               {MessageRow}
