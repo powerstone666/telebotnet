@@ -104,22 +104,22 @@ export interface TelegramPhotoSize {
   file_size?: number;
 }
 
-export interface TelegramDocument {
-  file_id: string;
-  file_unique_id: string;
-  thumbnail?: TelegramPhotoSize;
-  file_name?: string;
-  mime_type?: string;
-  file_size?: number;
-}
-
 export interface TelegramVideo {
   file_id: string;
   file_unique_id: string;
   width: number;
   height: number;
   duration: number;
-  thumbnail?: TelegramPhotoSize;
+  thumb?: TelegramPhotoSize;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
+export interface TelegramDocument {
+  file_id: string;
+  file_unique_id: string;
+  thumb?: TelegramPhotoSize;
   file_name?: string;
   mime_type?: string;
   file_size?: number;
@@ -127,10 +127,10 @@ export interface TelegramVideo {
 
 export interface TelegramMessage {
   message_id: number;
-  from?: TelegramUser; // Contains user_id in from.id
-  sender_chat?: TelegramChat; // Contains chat_id if sent on behalf of a channel
-  date: number; 
-  chat: TelegramChat; // Contains chat_id in chat.id (this is the target chat)
+  from?: TelegramUser; // Optional: For messages sent by users or bots
+  sender_chat?: TelegramChat; // Optional: For messages sent by channels
+  date: number; // Unix timestamp
+  chat: TelegramChat;
   forward_from?: TelegramUser;
   forward_from_chat?: TelegramChat;
   forward_from_message_id?: number;
@@ -147,17 +147,55 @@ export interface TelegramMessage {
   author_signature?: string;
   text?: string;
   entities?: TelegramMessageEntity[];
+  // caption_entities?: MessageEntity[]; // Not explicitly used yet
+  // audio?: Audio;
   document?: TelegramDocument;
   photo?: TelegramPhotoSize[];
+  // sticker?: Sticker;
   video?: TelegramVideo;
+  // video_note?: VideoNote;
+  // voice?: Voice;
   caption?: string;
-  caption_entities?: TelegramMessageEntity[];
-  sourceTokenId?: string; 
-  botUsername?: string;
-  // Extracted fields for convenience, populated by our webhook handler
-  userId?: number; // Extracted from message.from.id
-  chatId?: number; // Extracted from message.chat.id
-  isGroupMessage?: boolean; // True if chat.type is 'group' or 'supergroup'
+  // contact?: Contact;
+  // dice?: Dice;
+  // game?: Game;
+  // poll?: Poll;
+  // venue?: Venue;
+  // location?: Location;
+  // new_chat_members?: User[];
+  // left_chat_member?: User;
+  // new_chat_title?: string;
+  // new_chat_photo?: PhotoSize[];
+  // delete_chat_photo?: true;
+  // group_chat_created?: true;
+  // supergroup_chat_created?: true;
+  // channel_chat_created?: true;
+  // message_auto_delete_timer_changed?: MessageAutoDeleteTimerChanged;
+  // migrate_to_chat_id?: number;
+  // migrate_from_chat_id?: number;
+  // pinned_message?: Message;
+  // invoice?: Invoice;
+  // successful_payment?: SuccessfulPayment;
+  // connected_website?: string;
+  // passport_data?: PassportData;
+  // proximity_alert_triggered?: ProximityAlertTriggered;
+  // forum_topic_created?: ForumTopicCreated;
+  // forum_topic_edited?: ForumTopicEdited;
+  // forum_topic_closed?: ForumTopicClosed;
+  // forum_topic_reopened?: ForumTopicReopened;
+  // general_forum_topic_hidden?: GeneralForumTopicHidden;
+  // general_forum_topic_unhidden?: GeneralForumTopicUnhidden;
+  // write_access_allowed?: WriteAccessAllowed;
+  // reply_markup?: InlineKeyboardMarkup; // For inline keyboards
+
+  // Custom fields for UI state / context, not part of Telegram API for this object directly
+  sourceTokenId?: string; // ID of the bot token that received/sent this message
+  botUsername?: string;   // Username of the bot associated with sourceTokenId
+  userId?: number;        // Extracted User ID from 'from' or other relevant field
+  chatId?: number;        // Extracted Chat ID from 'chat'
+  isGroupMessage?: boolean;// True if chat.type is group or supergroup
+  isLoading?: boolean;      // For UI purposes, e.g., when fetching details
+  error?: string;         // For UI purposes, to show errors related to this message
 }
 
 export interface TelegramUpdate {
@@ -166,44 +204,20 @@ export interface TelegramUpdate {
   edited_message?: TelegramMessage;
   channel_post?: TelegramMessage;
   edited_channel_post?: TelegramMessage;
-  // Extracted fields for convenience, populated by our webhook handler
-  userId?: number; // Extracted from the relevant message's from.id
-  chatId?: number; // Extracted from the relevant message's chat.id
-  isGroupMessage?: boolean; // True if the relevant message's chat.type is 'group' or 'supergroup'
+  // Other update types can be added here (inline_query, chosen_inline_result, callback_query, etc.)
+
+  // Custom fields for UI state / context, added during processing (e.g., in webhook or SSE handler)
+  sourceTokenId?: string; // ID of the bot token that received this update
+  botUsername?: string;   // Username of the bot associated with sourceTokenId
+  userId?: number;        // Extracted User ID from the update content (e.g., message.from.id)
+  chatId?: number;        // Extracted Chat ID from the update content (e.g., message.chat.id)
+  isGroupMessage?: boolean;// True if the message is from a group or supergroup
 }
 
-export interface WebhookInfo {
-  url: string;
-  has_custom_certificate: boolean;
-  pending_update_count: number;
-  ip_address?: string;
-  last_error_date?: number;
-  last_error_message?: string;
-  last_synchronization_error_date?: number;
-  max_connections?: number;
-  allowed_updates?: string[];
-}
-
-export type MessageType = 'Text' | 'Photo' | 'Document' | 'Video';
-
-export interface SendMessageFormData {
-  tokenId: string;
-  chatId: string;
-  messageType: MessageType;
-  text?: string; // Used for text message or caption for media
-  mediaFile?: File;
-  replyToMessageId?: string;
-  parseMode?: 'MarkdownV2' | 'HTML' | 'Markdown';
-}
-
-export interface WebhookOperationParams {
-  tokenIds: string[];
-  webhookUrl?: string;
-}
-
-export interface GetUpdatesParams {
-  tokenIds: string[];
-}
+// This specific type is for data coming through SSE, which is essentially a TelegramUpdate with context
+// It was previously named UpdateWithContext, but TelegramUpdate now serves this purpose by including optional context fields.
+// If a more distinct type is ever needed for SSE that differs significantly, it can be redefined.
+// For now, using TelegramUpdate for SSE data is appropriate as it already has the necessary optional fields.
 
 export interface ApiResult<T = any> {
   success: boolean;

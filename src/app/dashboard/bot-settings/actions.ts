@@ -1,4 +1,3 @@
-
 "use server";
 
 import type { ApiResult, BotCommand } from "@/lib/types";
@@ -66,5 +65,20 @@ export async function deleteMyCommandsAction(token: string): Promise<ApiResult<b
   } catch (error) {
     console.error("deleteMyCommandsAction error:", error);
     return { success: false, error: error instanceof Error ? error.message : "An unknown error occurred deleting commands." };
+  }
+}
+
+export async function getBotInfoAction(token: string): Promise<ApiResult<any>> { // Using any for now, replace with a proper BotInfo type if available
+  try {
+    const response = await fetch(`${TELEGRAM_API_BASE}${token}/getMe`);
+    const data = await response.json();
+    if (data.ok) {
+      return { success: true, data: data.result };
+    } else {
+      return { success: false, error: data.description || "Failed to fetch bot info" };
+    }
+  } catch (error) {
+    console.error("getBotInfoAction error:", error);
+    return { success: false, error: error instanceof Error ? error.message : "An unknown error occurred" };
   }
 }

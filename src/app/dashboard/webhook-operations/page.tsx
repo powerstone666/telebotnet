@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { setWebhookAction, deleteWebhookAction } from './actions';
-import { Loader2, AlertTriangle, Info } from 'lucide-react';
+import { Loader2, AlertTriangle, Info, Search } from 'lucide-react'; // Added Search icon
 
 export default function WebhookOperationsPage() {
   const { tokens, isLoading: isLoadingTokens, updateToken } = useStoredTokens();
@@ -19,6 +19,7 @@ export default function WebhookOperationsPage() {
   const [webhookBaseUrl, setWebhookBaseUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(''); // New state for search term
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -35,7 +36,7 @@ export default function WebhookOperationsPage() {
   };
 
   const handleSelectAll = (checked: boolean) => {
-    setSelectedTokenIds(checked ? tokens.map(t => t.id) : []);
+    setSelectedTokenIds(checked ? filteredTokens.map(t => t.id) : []); // Use filteredTokens for select all
   };
 
   const getTokensByIds = (ids: string[]): StoredToken[] => {
@@ -111,6 +112,14 @@ export default function WebhookOperationsPage() {
     });
   };
 
+  // Filter tokens based on search term
+  const filteredTokens = tokens.filter(token => {
+    const botUsername = token.botInfo?.username?.toLowerCase() || '';
+    const tokenId = token.id.toLowerCase();
+    const search = searchTerm.toLowerCase();
+    return botUsername.includes(search) || tokenId.includes(search);
+  });
+
 
   if (isLoadingTokens) {
     return (
@@ -140,19 +149,31 @@ export default function WebhookOperationsPage() {
             <p className="text-muted-foreground">No tokens available. Please add tokens in Token Management.</p>
           ) : (
             <>
+              <div className="flex items-center space-x-2 mb-4"> {/* Added mb-4 for spacing */}
+                <div className="relative flex-grow">
+                  <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Search bots by name or ID..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8 w-full" // Added padding for icon
+                  />
+                </div>
+              </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="select-all-tokens"
-                  checked={selectedTokenIds.length === tokens.length && tokens.length > 0}
+                  checked={selectedTokenIds.length === filteredTokens.length && filteredTokens.length > 0} // Use filteredTokens
                   onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
                   aria-label="Select all tokens"
                 />
                 <Label htmlFor="select-all-tokens" className="font-medium">
-                  Select All ({selectedTokenIds.length}/{tokens.length})
+                  Select All ({selectedTokenIds.length}/{filteredTokens.length}) {/* Use filteredTokens */}
                 </Label>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-60 overflow-y-auto p-1 rounded-md border">
-                {tokens.map(token => (
+                {filteredTokens.map(token => ( // Use filteredTokens
                   <div key={token.id} className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors">
                     <Checkbox
                       id={`token-${token.id}`}

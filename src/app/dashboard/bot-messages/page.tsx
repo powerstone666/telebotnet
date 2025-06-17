@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { TelegramMessage, StoredToken, ApiResult } from '@/lib/types';
+import type { TelegramMessage, StoredToken, ApiResult, TelegramUpdate } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCard } from '@/components/messages/MessageCard';
@@ -23,17 +23,22 @@ import { useToast } from '@/hooks/use-toast';
 import { useStoredTokens } from '@/lib/localStorage';
 import { sendMessageAction, deleteMessageAction } from './actions'; 
 import { Loader2, Send } from 'lucide-react';
+import { useMemo } from 'react';
 
-// Simple in-memory store for sent messages for this page session
-// In a real app, these might be fetched from a DB or a more persistent log
-const sentMessagesStore: { [key: string]: TelegramMessage[] } = {};
+// Store for messages actively managed (sent/edited/deleted) by this page instance for the selectedTokenId
+const pageManagedMessagesStore: { [key: string]: TelegramMessage[] } = {};
 
 export default function BotMessagesPage() {
   const { tokens } = useStoredTokens();
   const [selectedTokenId, setSelectedTokenId] = useState<string>("");
   const [chatId, setChatId] = useState<string>("");
   const [messageText, setMessageText] = useState<string>("");
-  const [sentMessages, setSentMessages] = useState<TelegramMessage[]>([]);
+  
+  // State for messages sent/managed by this page instance for the selectedTokenId
+  const [pageManagedMessages, setPageManagedMessages] = useState<TelegramMessage[]>([]);
+  // State for other bot messages received via SSE from any registered bot
+  const [otherBotMessages, setOtherBotMessages] = useState<TelegramMessage[]>([]);
+
   const [editingMessage, setEditingMessage] = useState<TelegramMessage | null>(null);
   const [deletingMessage, setDeletingMessage] = useState<TelegramMessage | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -46,37 +51,85 @@ export default function BotMessagesPage() {
     }
   }, [tokens, selectedTokenId]);
 
+  // Effect to load/update pageManagedMessages from pageManagedMessagesStore based on selectedTokenId
   useEffect(() => {
     if (selectedTokenId) {
-      setSentMessages(sentMessagesStore[selectedTokenId] || []);
+      setPageManagedMessages(pageManagedMessagesStore[selectedTokenId] || []);
+    } else {
+      setPageManagedMessages([]); // Clear if no token selected
     }
   }, [selectedTokenId]);
+
+  // SSE Listener for incoming bot messages
+  useEffect(() => {
+    const eventSource = new EventSource("/api/sse");
+
+    eventSource.onmessage = (event) => {
+      try {
+        const update: TelegramUpdate = JSON.parse(event.data); // Use TelegramUpdate type
+
+        // Ensure it's a message, from a bot, and one of our registered bots
+        if (update.message && update.message.from?.is_bot && update.sourceTokenId && tokens.some(t => t.id === update.sourceTokenId)) {
+          const botMessage: TelegramMessage = {
+            ...update.message,
+            // Ensure all context fields from the update are mapped to the message if not already present
+            sourceTokenId: update.sourceTokenId,
+            botUsername: update.botUsername || tokens.find(t => t.id === update.sourceTokenId)?.botInfo?.username,
+            userId: update.userId || update.message.from?.id,
+            chatId: update.chatId || update.message.chat.id,
+            isGroupMessage: update.isGroupMessage === undefined 
+              ? (update.message.chat.type === 'group' || update.message.chat.type === 'supergroup') 
+              : update.isGroupMessage,
+          };
+
+          setOtherBotMessages(prev => {
+            const exists = prev.some(m => m.message_id === botMessage.message_id && m.chat.id === botMessage.chat.id && m.sourceTokenId === botMessage.sourceTokenId);
+            if (exists) return prev;
+            return [botMessage, ...prev.slice(0, 199)]; 
+          });
+        }
+      } catch (error) {
+        console.error("Error processing SSE message for bot messages:", error);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("SSE Error (Bot Messages):", err);
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [tokens]); // Effect depends on tokens to identify "our" bots
 
   const handleSendMessage = async () => {
     if (!selectedTokenId || !chatId || !messageText.trim()) {
       toast({ title: "Error", description: "Please select a bot, enter a Chat ID, and write a message.", variant: "destructive" });
       return;
     }
-    const token = tokens.find(t => t.id === selectedTokenId)?.token;
-    if (!token) {
+    const tokenInfo = tokens.find(t => t.id === selectedTokenId);
+    if (!tokenInfo || !tokenInfo.token) {
       toast({ title: "Error", description: "Selected bot token not found.", variant: "destructive" });
       return;
     }
 
     setIsSending(true);
-    const result = await sendMessageAction(token, chatId, messageText);
+    const result = await sendMessageAction(tokenInfo.token, chatId, messageText);
     setIsSending(false);
 
     if (result.success && result.data) {
       toast({ title: "Message Sent", description: "Your message has been sent successfully." });
-      const newSentMessage = { 
+      const newSentMessage: TelegramMessage = { 
         ...result.data, 
-        sourceTokenId: selectedTokenId, // So we know which token sent it for edit/delete
-        botUsername: tokens.find(t => t.id === selectedTokenId)?.botInfo?.username
+        sourceTokenId: selectedTokenId, 
+        botUsername: tokenInfo.botInfo?.username,
+        userId: result.data.from?.id, 
+        chatId: result.data.chat.id,
+        isGroupMessage: result.data.chat.type === 'group' || result.data.chat.type === 'supergroup',
       };
-      setSentMessages(prev => {
+      setPageManagedMessages(prev => {
         const updated = [newSentMessage, ...prev];
-        sentMessagesStore[selectedTokenId] = updated;
+        pageManagedMessagesStore[selectedTokenId] = updated;
         return updated;
       });
       setMessageText(""); // Clear input after sending
@@ -112,11 +165,14 @@ export default function BotMessagesPage() {
     const result = await deleteMessageAction(token, deletingMessage.chat.id.toString(), deletingMessage.message_id);
     if (result.success) {
       toast({ title: "Message Deleted", description: "The message has been successfully deleted from Telegram." });
-      setSentMessages(prev => {
-        const updated = prev.filter(m => m.message_id !== deletingMessage.message_id || m.chat.id !== deletingMessage.chat.id);
-        sentMessagesStore[selectedTokenId] = updated;
+      setPageManagedMessages(prev => {
+        const updated = prev.filter(m => !(m.message_id === deletingMessage.message_id && m.chat.id === deletingMessage.chat.id));
+        if (selectedTokenId && pageManagedMessagesStore[selectedTokenId]) {
+            pageManagedMessagesStore[selectedTokenId] = updated;
+        }
         return updated;
       });
+      setOtherBotMessages(prev => prev.filter(m => !(m.message_id === deletingMessage.message_id && m.chat.id === deletingMessage.chat.id)));
     } else {
       toast({ title: "Failed to Delete Message", description: result.error, variant: "destructive" });
     }
@@ -125,18 +181,44 @@ export default function BotMessagesPage() {
   };
 
   const handleMessageEdited = (editedMessageFull: TelegramMessage) => {
-    setSentMessages(prevMessages => {
+    setPageManagedMessages(prevMessages => {
+      const currentBotInfo = tokens.find(t => t.id === selectedTokenId)?.botInfo;
       const updated = prevMessages.map(msg =>
         (msg.message_id === editedMessageFull.message_id && msg.chat.id === editedMessageFull.chat.id)
-          ? { ...msg, ...editedMessageFull, sourceTokenId: selectedTokenId, botUsername: tokens.find(t => t.id === selectedTokenId)?.botInfo?.username }
+          ? { ...msg, ...editedMessageFull, sourceTokenId: selectedTokenId, botUsername: currentBotInfo?.username }
           : msg
       );
-      sentMessagesStore[selectedTokenId] = updated;
+      if (selectedTokenId) {
+        pageManagedMessagesStore[selectedTokenId] = updated;
+      }
       return updated;
     });
   };
 
   const handleCloseEditModal = () => setEditingMessage(null);
+
+  const combinedMessages = useMemo(() => {
+    const allMessagesMap = new Map<string, TelegramMessage>();
+
+    // Add pageManagedMessages, these are messages sent/edited from this page for the selected bot
+    pageManagedMessages.forEach(msg => {
+      if (msg.chat?.id && msg.message_id) {
+        allMessagesMap.set(`${msg.chat.id}-${msg.message_id}`, msg);
+      }
+    });
+
+    // Add otherBotMessages (from any registered bot via SSE)
+    otherBotMessages.forEach(msg => {
+      if (msg.chat?.id && msg.message_id) {
+        const key = `${msg.chat.id}-${msg.message_id}`;
+        if (!allMessagesMap.has(key)) { // Add if not already present from pageManagedMessages
+            allMessagesMap.set(key, msg);
+        }
+      }
+    });
+    
+    return Array.from(allMessagesMap.values()).sort((a, b) => (b.date || 0) - (a.date || 0));
+  }, [pageManagedMessages, otherBotMessages]);
 
   return (
     <div className="space-y-8">
@@ -199,25 +281,34 @@ export default function BotMessagesPage() {
           <CardDescription>Messages sent by the selected bot in this session. These are not persisted long-term.</CardDescription>
         </CardHeader>
         <CardContent>
-          {sentMessages.length === 0 ? (
-            <p className="text-muted-foreground text-center py-10">No messages sent by this bot in this session yet.</p>
-          ) : (
-            <ScrollArea className="h-[400px] p-1">
-              <div className="space-y-4">
-                {sentMessages.map((msg, index) => (
-                  <MessageCard
-                    key={`${msg.message_id}-${msg.date}-${msg.chat?.id}-${index}`}
-                    message={msg}
-                    onReply={() => {}} // No reply for bot's own messages
-                    onEdit={handleEdit} // Allow edit for bot messages
-                    onDelete={handleDeleteInitiate}
-                    isBotMessage={true} // Mark as bot message to enable edit
-                    // onDownloadFile can be omitted if not applicable to bot-sent messages or handled differently
-                  />
-                ))}
+          <ScrollArea className="h-[500px] w-full rounded-md border p-4 bg-muted/30">
+            {combinedMessages.length === 0 && (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">No bot messages to display. Send a message or wait for incoming bot activity.</p>
               </div>
-            </ScrollArea>
-          )}
+            )}
+            <div className="space-y-4">
+              {combinedMessages.map((message) => {
+                // A message is considered "page managed" if it's in the pageManagedMessages list for the currently selected token
+                // OR if its sourceTokenId matches the selectedTokenId (for messages that might have arrived via SSE but were initiated by this bot)
+                const isDirectlyManagedBySelectedBot = pageManagedMessages.some(
+                  pm => pm.message_id === message.message_id && pm.chat.id === message.chat.id
+                ) || message.sourceTokenId === selectedTokenId;
+                
+                return (
+                  <MessageCard
+                    key={`${message.chat.id}-${message.message_id}-${message.sourceTokenId}`}
+                    message={message}
+                    onReply={() => { /* No direct reply action from this page; users reply in Telegram */ }}
+                    onEdit={isDirectlyManagedBySelectedBot && message.text ? handleEdit : undefined} // Edit only for text messages managed by the selected bot
+                    onDelete={handleDeleteInitiate} // Delete can be attempted for any message with a sourceTokenId
+                    isBotMessage={true} // All messages on this page are considered bot messages
+                    // onDownloadFile could be added if bots send downloadable files
+                  />
+                );
+              })}
+            </div>
+          </ScrollArea>
         </CardContent>
       </Card>
 

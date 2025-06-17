@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { TelegramMessage, TelegramUpdate, StoredToken } from '@/lib/types'; // Added TelegramUpdate
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,127 +21,60 @@ import { useToast } from '@/hooks/use-toast';
 import { useStoredTokens } from '@/lib/localStorage';
 import { downloadFileAction, deleteMessageAction } from './actions';
 import { saveAs } from 'file-saver'; 
-import { Loader2 } from 'lucide-react';
+import { Loader2, Filter, Trash2, Search } from 'lucide-react'; // Added Trash2, Search
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input"; // Added Input
+import { useLocalStorageMessagesWithExpiry } from '@/hooks/useLocalStorageMessagesWithExpiry'; // Import the new hook
 
-
-function useSessionStorageMessages(key: string, initialValue: TelegramMessage[]) {
-  const [storedValue, setStoredValue] = useState<TelegramMessage[]>(initialValue);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Effect for initial load from sessionStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const item = window.sessionStorage.getItem(key);
-        if (item) {
-          const parsedItems = JSON.parse(item);
-          if (Array.isArray(parsedItems)) {
-            setStoredValue(parsedItems.sort((a, b) => b.date - a.date));
-          } else {
-            setStoredValue(initialValue);
-          }
-        } else {
-          setStoredValue(initialValue);
-        }
-      } catch (error) {
-        console.error(`Error reading ${key} from sessionStorage:`, error);
-        setStoredValue(initialValue);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]); // initialValue is stable, so key is the main dependency for re-running this if needed.
-
-  // Function to update React state (this will be returned and used as setMessages)
-  const updateReactStateAndPrepareForStorage = useCallback((value: TelegramMessage[] | ((val: TelegramMessage[]) => TelegramMessage[])) => {
-    try {
-      const valueToStoreCallback = typeof value === 'function' ? value : () => value;
-      setStoredValue(currentStoredValue => {
-        const newUnsortedMessages = valueToStoreCallback(currentStoredValue);
-        // Ensure message_id and chat.id exist before creating map keys
-        const validMessages = newUnsortedMessages.filter(msg => msg && typeof msg.message_id !== 'undefined' && msg.chat && typeof msg.chat.id !== 'undefined');
-        const messageMap = new Map(validMessages.map(msg => [`${msg.chat.id}-${msg.message_id}`, msg]));
-        
-        const uniqueSortedMessages = Array.from(messageMap.values())
-                                        .sort((a, b) => b.date - a.date)
-                                        .slice(0, 200); // Keep only the latest 200 messages
-        return uniqueSortedMessages;
-      });
-    } catch (error) {
-      console.error(`Error updating React state for ${key}:`, error);
-    }
-  }, [key]);
-
-  // Effect for debounced writing to sessionStorage
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    debounceTimerRef.current = setTimeout(() => {
-      try {
-        // console.log(`Debounced: Writing ${storedValue.length} messages to sessionStorage for key ${key}`);
-        window.sessionStorage.setItem(key, JSON.stringify(storedValue));
-      } catch (error) {
-        console.error(`Error debounced setting ${key} in sessionStorage:`, error);
-      }
-    }, 500); // 500ms debounce
-
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [key, storedValue]); // Re-run when storedValue or key changes
-
-  return [storedValue, updateReactStateAndPrepareForStorage] as const;
-}
-
+const MESSAGE_EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000; // 1 day
 
 export default function MessageLogPage() {
-  const [messages, setMessages] = useSessionStorageMessages('telematrix_webhook_messages', []);
   const { tokens } = useStoredTokens(); 
+  const [messages, setMessages, clearMessages, isLoadingMessages] = useLocalStorageMessagesWithExpiry(
+    'telematrix_webhook_messages_v2', // New key for localStorage to avoid conflicts with old session storage
+    [], 
+    tokens,
+    MESSAGE_EXPIRY_DURATION_MS
+  );
   const [replyingToMessage, setReplyingToMessage] = useState<TelegramMessage | null>(null);
-  // const [editingMessage, setEditingMessage] = useState<TelegramMessage | null>(null); // Edit button removed
   const [deletingMessage, setDeletingMessage] = useState<TelegramMessage | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isClearAllConfirmOpen, setIsClearAllConfirmOpen] = useState(false); // For clearing messages
   const { toast } = useToast();
   const [hasMounted, setHasMounted] = useState(false);
+  const [filterTokenIds, setFilterTokenIds] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     setHasMounted(true);
   }, []);
-
-  const enrichMessageWithBotInfo = useCallback((message: TelegramMessage): TelegramMessage => {
-    if (message.sourceTokenId && !message.botUsername) {
-      const sourceToken = tokens.find(t => t.id === message.sourceTokenId);
-      if (sourceToken && sourceToken.botInfo) {
-        return { ...message, botUsername: sourceToken.botInfo.username };
-      }
-    }
-    return message;
-  }, [tokens]);
 
   const addNewMessage = useCallback((newMessage: TelegramMessage) => {
     if (!newMessage || typeof newMessage.message_id === 'undefined' || !newMessage.chat || typeof newMessage.chat.id === 'undefined') {
       console.warn("SSE: Received incomplete message, skipping:", newMessage);
       return;
     }
-    const enrichedNewMessage = enrichMessageWithBotInfo(newMessage);
     setMessages(prevMessages => {
-      return [enrichedNewMessage, ...prevMessages]; 
+      return [newMessage, ...prevMessages]; 
     });
+    
+    const botNameForToast = newMessage.botUsername || (newMessage.sourceTokenId ? tokens.find(t=>t.id === newMessage.sourceTokenId)?.botInfo?.username : null) || 'Bot';
     toast({ 
       title: "New Message Received", 
-      description: `From: ${enrichedNewMessage.from?.username || enrichedNewMessage.from?.first_name || 'Unknown'} via ${enrichedNewMessage.botUsername || 'Bot'}` 
+      description: `From: ${newMessage.from?.username || newMessage.from?.first_name || 'Unknown'} via ${botNameForToast}` 
     });
-  }, [setMessages, toast, enrichMessageWithBotInfo]);
+  }, [setMessages, toast, tokens]);
 
   useEffect(() => {
-    if (!hasMounted) return;
+    if (!hasMounted || isLoadingMessages) return; // Don't start SSE if messages are still loading
 
     const clientId = `client-${Math.random().toString(36).substring(2, 15)}`;
     const eventSource = new EventSource(`/api/sse?clientId=${clientId}`);
@@ -155,7 +88,8 @@ export default function MessageLogPage() {
         const eventData = JSON.parse(event.data);
         
         if (eventData.type === 'NEW_MESSAGE' || eventData.type === 'GENERIC_UPDATE') {
-          const { update: fullUpdate, tokenId } = eventData.payload;
+          const fullUpdate = eventData.payload.update as TelegramUpdate;
+          // const tokenId = eventData.payload.tokenId as string; // This is fullUpdate.sourceTokenId
           
           let messageFromUpdate: TelegramMessage | undefined = undefined;
 
@@ -168,15 +102,20 @@ export default function MessageLogPage() {
           } else if (fullUpdate.edited_channel_post) {
             messageFromUpdate = fullUpdate.edited_channel_post;
           }
-          // Add other update types like callback_query if they contain messages to log
 
           if (messageFromUpdate && typeof messageFromUpdate.message_id !== 'undefined' && messageFromUpdate.chat && typeof messageFromUpdate.chat.id !== 'undefined') {
-            // The webhook should have already set sourceTokenId, userId, chatId, isGroupMessage
-            // If sourceTokenId is somehow missing on the message but present in payload, add it.
-            if (!messageFromUpdate.sourceTokenId && tokenId) {
-                messageFromUpdate.sourceTokenId = tokenId;
-            }
-            addNewMessage(messageFromUpdate as TelegramMessage);
+            // Ensure context fields from TelegramUpdate are on the message object for addNewMessage
+            const finalMessage: TelegramMessage = {
+              ...messageFromUpdate,
+              sourceTokenId: messageFromUpdate.sourceTokenId || fullUpdate.sourceTokenId,
+              botUsername: messageFromUpdate.botUsername || fullUpdate.botUsername,
+              userId: messageFromUpdate.userId || fullUpdate.userId || messageFromUpdate.from?.id,
+              chatId: messageFromUpdate.chatId || fullUpdate.chatId || messageFromUpdate.chat.id,
+              isGroupMessage: typeof messageFromUpdate.isGroupMessage === 'boolean' ? messageFromUpdate.isGroupMessage : 
+                              typeof fullUpdate.isGroupMessage === 'boolean' ? fullUpdate.isGroupMessage :
+                              (messageFromUpdate.chat.type === 'group' || messageFromUpdate.chat.type === 'supergroup'),
+            };
+            addNewMessage(finalMessage);
           } else {
             console.warn(`SSE: Received ${eventData.type} with no processable message in update, skipping:`, fullUpdate);
           }
@@ -214,40 +153,42 @@ export default function MessageLogPage() {
   };
 
   const handleConfirmDelete = async () => {
-    if (!deletingMessage || !deletingMessage.sourceTokenId) {
-      toast({ title: "Error", description: "Cannot delete message: missing information.", variant: "destructive"});
+    if (!deletingMessage || !deletingMessage.sourceTokenId || !deletingMessage.chat?.id || !deletingMessage.message_id) {
+      toast({ title: "Error", description: "Cannot delete message: missing information.", variant: "destructive" });
       setIsDeleteConfirmOpen(false);
       setDeletingMessage(null);
       return;
     }
     const token = tokens.find(t => t.id === deletingMessage.sourceTokenId)?.token;
     if (!token) {
-        toast({ title: "Token Error", description: "Bot token not found for deleting message.", variant: "destructive"});
-        setIsDeleteConfirmOpen(false);
-        setDeletingMessage(null);
-        return;
+      toast({ title: "Token Error", description: "Bot token not found for deleting message.", variant: "destructive" });
+      setIsDeleteConfirmOpen(false);
+      setDeletingMessage(null);
+      return;
     }
-    
-    const result = await deleteMessageAction(token, deletingMessage.chat.id, deletingMessage.message_id);
+
+    const result = await deleteMessageAction(token, deletingMessage.chat.id.toString(), deletingMessage.message_id);
     if (result.success) {
-      toast({ title: "Message Deleted", description: "The message has been successfully deleted."});
-      setMessages(prev => prev.filter(m => m.message_id !== deletingMessage.message_id || m.chat.id !== deletingMessage.chat.id));
+      toast({ title: "Message Deleted", description: "The message has been successfully deleted from Telegram." });
+      // The hook will handle persistence, just update UI state by removing the message
+      setMessages(prev => prev.filter(m => !(m.message_id === deletingMessage.message_id && m.chat.id === deletingMessage.chat.id && m.sourceTokenId === deletingMessage.sourceTokenId)));
     } else {
-      toast({ title: "Failed to Delete Message", description: result.error, variant: "destructive"});
+      toast({ title: "Failed to Delete Message", description: result.error, variant: "destructive" });
     }
     setIsDeleteConfirmOpen(false);
     setDeletingMessage(null);
   };
 
-  // const handleMessageEdited = (editedMessageFull: TelegramMessage) => { // Edit button removed
-  //   setMessages(prevMessages => 
-  //     prevMessages.map(msg => 
-  //       (msg.message_id === editedMessageFull.message_id && msg.chat.id === editedMessageFull.chat.id) 
-  //       ? { ...msg, ...enrichMessageWithBotInfo(editedMessageFull) } 
-  //       : msg
-  //     )
-  //   );
-  // };
+  const handleClearMessages = async () => {
+    await clearMessages(filterTokenIds.length > 0 ? filterTokenIds : undefined);
+    toast({
+      title: "Messages Cleared",
+      description: filterTokenIds.length > 0 
+        ? `Messages for selected bot(s) have been cleared from local storage.`
+        : `All messages have been cleared from local storage.`,
+    });
+    setIsClearAllConfirmOpen(false);
+  };
 
   const handleCloseReplyModal = () => setReplyingToMessage(null);
   // const handleCloseEditModal = () => setEditingMessage(null); // Edit button removed
@@ -280,54 +221,118 @@ export default function MessageLogPage() {
     }
   };
   
-  useEffect(() => {
-    if (hasMounted && tokens.length > 0) {
-      setMessages(currentMessages => currentMessages.map(enrichMessageWithBotInfo));
+  const displayedMessages = useMemo(() => {
+    let filtered = messages;
+    if (filterTokenIds.length > 0) {
+      filtered = filtered.filter(msg => msg.sourceTokenId && filterTokenIds.includes(msg.sourceTokenId));
     }
-  }, [hasMounted, tokens, setMessages, enrichMessageWithBotInfo]);
+    if (searchTerm) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(msg => 
+        (msg.text && msg.text.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.from?.first_name && msg.from.first_name.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.from?.last_name && msg.from.last_name.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.from?.username && msg.from.username.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.chat?.title && msg.chat.title.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.chat?.username && msg.chat.username.toLowerCase().includes(lowerSearchTerm)) ||
+        (msg.botUsername && msg.botUsername.toLowerCase().includes(lowerSearchTerm))
+      );
+    }
+    return filtered;
+  }, [messages, filterTokenIds, searchTerm]);
 
+  if (!hasMounted || isLoadingMessages) { // Show loader if not mounted or messages are loading
+    return (
+      <div className="flex items-center justify-center" style={{minHeight: 'calc(100vh - 150px)'}}> 
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-headline font-bold tracking-tight">Message Log</h1>
-        <p className="text-muted-foreground">
-          Displays messages received from your Telegram bots. Data is stored in session storage and updated via "Get Updates" or webhook events.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+          <div>
+            <h1 className="text-3xl font-headline font-bold tracking-tight">Message Log</h1>
+            <p className="text-muted-foreground">
+              Live feed of messages from your Telegram bots (messages stored for 1 day).
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 items-center">
+            {tokens.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Filter className="mr-2 h-4 w-4" />
+                    Filter by Bot ({filterTokenIds.length === 0 ? 'All' : filterTokenIds.length})
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-64 max-h-80 overflow-y-auto">
+                  <DropdownMenuLabel>Show messages from:</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {tokens.map(token => (
+                    <DropdownMenuCheckboxItem
+                      key={token.id}
+                      checked={filterTokenIds.includes(token.id)}
+                      onCheckedChange={(checked) => {
+                        setFilterTokenIds(prev =>
+                          checked ? [...prev, token.id] : prev.filter(id => id !== token.id)
+                        );
+                      }}
+                    >
+                      {token.botInfo?.username || token.id}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  {filterTokenIds.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => setFilterTokenIds([])}>Clear Filters</Button>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <Button variant="outline" size="icon" onClick={() => setIsClearAllConfirmOpen(true)} disabled={messages.length === 0}>
+              <Trash2 className="h-4 w-4" />
+              <span className="sr-only">Clear Messages</span>
+            </Button>
+          </div>
+        </div>
+        <div className="mb-4">
+          <Input 
+            type="search"
+            placeholder="Search messages (text, user, bot...). Press Enter to search."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <CardDescription>
+          Displaying {displayedMessages.length} of {messages.length} messages (max 200, older than 1 day are auto-removed).
+        </CardDescription>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Messages</CardTitle>
-          {hasMounted && <CardDescription>Showing the last {messages.length} messages. Updates in real-time based on session activity.</CardDescription>}
-        </CardHeader>
-        <CardContent>
-          {!hasMounted ? (
-            <div className="flex flex-col items-center justify-center h-[600px]"> {/* Changed h-32 to h-[600px] and added flex-col for centering text below spinner */}
-              <Loader2 className="h-12 w-12 animate-spin text-primary" /> {/* Optionally increase spinner size */}
-              <p className="mt-4 text-muted-foreground">Loading messages...</p> {/* Adjusted margin for better spacing */}
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[600px]"> {/* Also apply to no messages state for consistency */}
-              <p className="text-muted-foreground text-center py-10">No messages recorded yet. Use "Get Updates" or ensure your webhook is set up and bots are active.</p>
-            </div>
-          ) : (
-            <ScrollArea className="h-[600px] p-1">
-              <div className="space-y-4">
-                {messages.map((msg, index) => ( 
-                  <MessageCard
-                    key={`${msg.message_id}-${msg.date}-${msg.chat.id}-${index}`}
-                    message={msg}
-                    onReply={handleReply}
-                    onDelete={handleDeleteInitiate}
-                    onDownloadFile={handleDownloadFile}
-                  />
-                ))}
-              </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+      <ScrollArea className="h-[calc(100vh-300px)] w-full rounded-md border p-4 bg-muted/30">
+        {displayedMessages.length === 0 && (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-muted-foreground">
+              {messages.length > 0 ? 'No messages match your current filter.' : 'No messages received yet. Ensure your webhook is set up.'}
+            </p>
+          </div>
+        )}
+        <div className="space-y-4">
+          {displayedMessages.map((message) => (
+            <MessageCard
+              key={`${message.chat.id}-${message.message_id}-${message.sourceTokenId || 'unknown'}`}
+              message={message} 
+              onReply={handleReply}
+              onDelete={handleDeleteInitiate}
+              onDownloadFile={handleDownloadFile}
+              isBotMessage={message.from?.is_bot || !!message.botUsername} // A message is a bot message if API says so or we know it came via one of our bots
+            />
+          ))}
+        </div>
+      </ScrollArea>
 
       {replyingToMessage && (
         <ReplyModal
@@ -360,6 +365,27 @@ export default function MessageLogPage() {
             <AlertDialogCancel onClick={() => setDeletingMessage(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete Message
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Dialog for Clearing Messages */}
+      <AlertDialog open={isClearAllConfirmOpen} onOpenChange={setIsClearAllConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {filterTokenIds.length > 0
+                ? `This will permanently delete all locally stored messages for the selected bot(s).`
+                : `This will permanently delete all locally stored messages.`}
+              This action does not affect messages on Telegram servers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleClearMessages} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+              Yes, Clear Messages
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

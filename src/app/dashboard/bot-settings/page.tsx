@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -19,12 +18,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useStoredTokens } from '@/lib/localStorage';
-import type { BotCommand } from '@/lib/types';
-import { getMyCommandsAction, setMyCommandsAction, deleteMyCommandsAction } from './actions';
+import type { BotCommand, StoredToken } from '@/lib/types'; // Added StoredToken
+import { getMyCommandsAction, setMyCommandsAction, deleteMyCommandsAction, getBotInfoAction } from './actions'; // Added getBotInfoAction
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ListChecks, Settings, Trash2, RefreshCw } from "lucide-react";
+import { Loader2, ListChecks, Settings, Trash2, RefreshCw, Search, InfoIcon } from "lucide-react"; // Added Search and InfoIcon
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Input } from "@/components/ui/input"; // Added Input
 
 const botCommandsFormSchema = z.object({
   tokenId: z.string().min(1, "Please select a bot token."),
@@ -58,11 +58,13 @@ const defaultCommandsExample = JSON.stringify([
 ], null, 2);
 
 export default function BotSettingsPage() {
-  const { tokens, isLoading: isLoadingTokens } = useStoredTokens();
+  const { tokens, isLoading: isLoadingTokens, updateToken } = useStoredTokens(); // Added updateToken
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentCommands, setCurrentCommands] = useState<BotCommand[] | null>(null);
   const [selectedTokenForDisplay, setSelectedTokenForDisplay] = useState<string>("");
+  const [botSearchTerm, setBotSearchTerm] = useState(''); // New state for bot search
+  const [selectedBotDetails, setSelectedBotDetails] = useState<StoredToken | null>(null); // New state for selected bot details
 
   const form = useForm<BotCommandsFormValues>({
     resolver: zodResolver(botCommandsFormSchema),
@@ -93,6 +95,12 @@ export default function BotSettingsPage() {
       setCurrentCommands(result.data);
       form.setValue("commandsJson", result.data.length > 0 ? JSON.stringify(result.data, null, 2) : "");
       toast({ title: "Commands Fetched", description: `Current commands for ${tokens.find(t=>t.id === tokenToUseId)?.botInfo?.username || 'bot'} loaded.` });
+      // Fetch and update bot info when commands are fetched for a selected bot
+      const currentToken = tokens.find(t => t.id === tokenToUseId);
+      if (currentToken && !currentToken.botInfo) { // Fetch if botInfo is missing
+        fetchAndStoreBotInfo(currentToken.token, currentToken.id);
+      }
+      setSelectedBotDetails(currentToken || null);
     } else {
       setCurrentCommands(null);
       form.setValue("commandsJson", "");
@@ -104,10 +112,30 @@ export default function BotSettingsPage() {
     const subscription = form.watch((value, { name }) => {
       if (name === "tokenId" && value.tokenId) {
         handleFetchCommands(value.tokenId);
+        const currentTokenDetails = tokens.find(t => t.id === value.tokenId);
+        setSelectedBotDetails(currentTokenDetails || null);
+        if (currentTokenDetails && !currentTokenDetails.botInfo) {
+            fetchAndStoreBotInfo(currentTokenDetails.token, currentTokenDetails.id);
+        }
       }
     });
     return () => subscription.unsubscribe();
   }, [form.watch, tokens]);
+
+  // Function to fetch and store bot info
+  const fetchAndStoreBotInfo = async (token: string, tokenId: string) => {
+    const botInfoResult = await getBotInfoAction(token);
+    if (botInfoResult.success && botInfoResult.data) {
+      updateToken(tokenId, { botInfo: botInfoResult.data });
+      // If this is the currently selected bot for display, update its details
+      if (selectedTokenForDisplay === tokenId) {
+        const updatedToken = tokens.find(t => t.id === tokenId);
+        setSelectedBotDetails(updatedToken || null);
+      }
+    } else {
+      console.warn(`Failed to fetch bot info for token ID ${tokenId}: ${botInfoResult.error}`);
+    }
+  };
 
 
   async function onSubmit(data: BotCommandsFormValues) {
@@ -167,8 +195,15 @@ export default function BotSettingsPage() {
     }
   };
   
-  const botUsernameForDisplay = tokens.find(t => t.id === selectedTokenForDisplay)?.botInfo?.username;
+  const botUsernameForDisplay = selectedBotDetails?.botInfo?.username || tokens.find(t => t.id === selectedTokenForDisplay)?.botInfo?.username;
 
+  // Filter tokens for the select dropdown
+  const filteredTokensForSelect = tokens.filter(token => {
+    const botUsername = token.botInfo?.username?.toLowerCase() || '';
+    const tokenId = token.id.toLowerCase();
+    const search = botSearchTerm.toLowerCase();
+    return botUsername.includes(search) || tokenId.includes(search);
+  });
 
   if (isLoadingTokens) {
     return <div className="flex items-center justify-center h-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading tokens...</p></div>;
@@ -182,6 +217,33 @@ export default function BotSettingsPage() {
           Manage your bot's commands and other settings provided by Telegram.
         </p>
       </div>
+
+      {/* Bot Info Card */}
+      {selectedBotDetails && (
+        <Card className="max-w-2xl mx-auto">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <InfoIcon className="h-5 w-5 mr-2 text-blue-500" /> Bot Information: {selectedBotDetails.botInfo?.username || selectedBotDetails.id}
+            </CardTitle>
+            <CardDescription>Details for the currently selected bot.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p><strong>Bot Name:</strong> {selectedBotDetails.botInfo?.first_name || 'N/A'}</p>
+            <p><strong>Username:</strong> @{selectedBotDetails.botInfo?.username || 'N/A'}</p>
+            <p><strong>Bot ID:</strong> {selectedBotDetails.botInfo?.id || 'N/A'}</p>
+            <p><strong>Can Join Groups:</strong> {selectedBotDetails.botInfo?.can_join_groups ? 'Yes' : 'No'}</p>
+            <p><strong>Can Read All Group Messages:</strong> {selectedBotDetails.botInfo?.can_read_all_group_messages ? 'Yes' : 'No'}</p>
+            <p><strong>Supports Inline Queries:</strong> {selectedBotDetails.botInfo?.supports_inline_queries ? 'Yes' : 'No'}</p>
+            <p><strong>Token ID (Internal):</strong> {selectedBotDetails.id}</p>
+            {selectedBotDetails.webhookStatus && (
+                <p><strong>Webhook Status:</strong> <Badge variant={selectedBotDetails.webhookStatus === 'set' ? 'default' : selectedBotDetails.webhookStatus === 'unset' ? 'outline' : 'destructive'}>{selectedBotDetails.webhookStatus}</Badge></p>
+            )}
+            {selectedBotDetails.lastWebhookSetAttempt && (
+                <p><strong>Last Webhook Activity:</strong> {new Date(selectedBotDetails.lastWebhookSetAttempt).toLocaleString()}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="max-w-2xl mx-auto">
         <CardHeader>
@@ -198,24 +260,50 @@ export default function BotSettingsPage() {
                   <FormItem>
                     <FormLabel>Select Bot</FormLabel>
                     <Select 
-                        onValueChange={(value) => {
-                            field.onChange(value);
-                            // handleFetchCommands(value); // Now handled by watch effect
-                        }} 
-                        defaultValue={field.value} 
-                        disabled={tokens.length === 0}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        const tokenDetails = tokens.find(t => t.id === value);
+                        setSelectedBotDetails(tokenDetails || null);
+                        if (tokenDetails && !tokenDetails.botInfo) { // Fetch if botInfo is missing
+                            fetchAndStoreBotInfo(tokenDetails.token, tokenDetails.id);
+                        }
+                      }}
+                      defaultValue={field.value}
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={tokens.length === 0 ? "No tokens available" : "Select a bot token..."} />
+                          <SelectValue placeholder="Select a bot token..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {tokens.map(token => (
-                          <SelectItem key={token.id} value={token.id}>
-                            {token.botInfo?.username || `Token ID: ${token.id}`}
-                          </SelectItem>
-                        ))}
+                        <div className="p-2">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input 
+                              type="search"
+                              placeholder="Search bots..."
+                              value={botSearchTerm}
+                              onChange={(e) => {
+                                e.stopPropagation(); // Prevent select from closing
+                                setBotSearchTerm(e.target.value);
+                              }}
+                              className="pl-8 w-full mb-1"
+                            />
+                          </div>
+                        </div>
+                        {isLoadingTokens ? (
+                          <SelectItem value="loading" disabled>Loading tokens...</SelectItem>
+                        ) : filteredTokensForSelect.length === 0 ? (
+                          <SelectItem value="notfound" disabled>No bots found matching "{botSearchTerm}".</SelectItem>
+                        ) : (
+                          <ScrollArea className="h-[200px]">
+                          {filteredTokensForSelect.map(token => (
+                            <SelectItem key={token.id} value={token.id}>
+                              {token.botInfo?.username || token.id}
+                            </SelectItem>
+                          ))}
+                          </ScrollArea>
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />
