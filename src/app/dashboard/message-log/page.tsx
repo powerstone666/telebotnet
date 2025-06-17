@@ -39,9 +39,9 @@ const MESSAGE_EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000; // 1 day
 export default function MessageLogPage() {
   const { tokens } = useStoredTokens(); 
   const [messages, setMessages, clearMessages, isLoadingMessages] = useLocalStorageMessagesWithExpiry(
-    'telematrix_webhook_messages_v2', // New key for localStorage to avoid conflicts with old session storage
+    'telematrix_webhook_messages_v2', 
     [], 
-    tokens,
+    tokens, // Pass tokens here for the hook to use
     MESSAGE_EXPIRY_DURATION_MS
   );
   const [replyingToMessage, setReplyingToMessage] = useState<TelegramMessage | null>(null);
@@ -53,6 +53,12 @@ export default function MessageLogPage() {
   const [filterTokenIds, setFilterTokenIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Ref to hold the latest tokens for use in callbacks without adding tokens to dependency arrays
+  const tokensRef = useRef(tokens);
+  useEffect(() => {
+    tokensRef.current = tokens;
+  }, [tokens]);
+
   useEffect(() => {
     setHasMounted(true);
   }, []);
@@ -63,18 +69,25 @@ export default function MessageLogPage() {
       return;
     }
     setMessages(prevMessages => {
+      // The hook (useLocalStorageMessagesWithExpiry) should handle deduplication, sorting, and capping.
+      // Prepend the new message.
       return [newMessage, ...prevMessages]; 
     });
     
-    const botNameForToast = newMessage.botUsername || (newMessage.sourceTokenId ? tokens.find(t=>t.id === newMessage.sourceTokenId)?.botInfo?.username : null) || 'Bot';
+    // Use tokensRef.current to avoid making addNewMessage dependent on the 'tokens' array reference
+    const currentTokens = tokensRef.current;
+    const botNameForToast = newMessage.botUsername || 
+                          (newMessage.sourceTokenId ? currentTokens.find(t => t.id === newMessage.sourceTokenId)?.botInfo?.username : null) || 
+                          'Bot';
+    
     toast({ 
       title: "New Message Received", 
       description: `From: ${newMessage.from?.username || newMessage.from?.first_name || 'Unknown'} via ${botNameForToast}` 
     });
-  }, [setMessages, toast, tokens]);
+  }, [setMessages, toast]); // Removed 'tokens' from dependencies, using tokensRef
 
   useEffect(() => {
-    if (!hasMounted || isLoadingMessages) return; // Don't start SSE if messages are still loading
+    if (!hasMounted || isLoadingMessages) return; 
 
     const clientId = `client-${Math.random().toString(36).substring(2, 15)}`;
     const eventSource = new EventSource(`/api/sse?clientId=${clientId}`);
@@ -137,7 +150,7 @@ export default function MessageLogPage() {
       console.log(`SSE Connection closing for client ID: ${clientId}`);
       eventSource.close();
     };
-  }, [hasMounted, addNewMessage]);
+  }, [hasMounted, addNewMessage, isLoadingMessages]); // Added isLoadingMessages to dependencies
 
   const handleReply = (message: TelegramMessage) => {
     setReplyingToMessage(message);
