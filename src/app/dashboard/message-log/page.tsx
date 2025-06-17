@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react'; // Added useRef
-import type { TelegramMessage, StoredToken } from '@/lib/types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { TelegramMessage, TelegramUpdate, StoredToken } from '@/lib/types'; // Added TelegramUpdate
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCard } from '@/components/messages/MessageCard';
 import { ReplyModal } from '@/components/messages/ReplyModal';
-import { EditMessageModal } from '@/components/messages/EditMessageModal'; 
+// import { EditMessageModal } from '@/components/messages/EditMessageModal'; // Edit button removed
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,7 +63,7 @@ function useSessionStorageMessages(key: string, initialValue: TelegramMessage[])
         
         const uniqueSortedMessages = Array.from(messageMap.values())
                                         .sort((a, b) => b.date - a.date)
-                                        .slice(0, 200);
+                                        .slice(0, 200); // Keep only the latest 200 messages
         return uniqueSortedMessages;
       });
     } catch (error) {
@@ -105,7 +105,7 @@ export default function MessageLogPage() {
   const [messages, setMessages] = useSessionStorageMessages('telematrix_webhook_messages', []);
   const { tokens } = useStoredTokens(); 
   const [replyingToMessage, setReplyingToMessage] = useState<TelegramMessage | null>(null);
-  const [editingMessage, setEditingMessage] = useState<TelegramMessage | null>(null);
+  // const [editingMessage, setEditingMessage] = useState<TelegramMessage | null>(null); // Edit button removed
   const [deletingMessage, setDeletingMessage] = useState<TelegramMessage | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const { toast } = useToast();
@@ -132,7 +132,6 @@ export default function MessageLogPage() {
     }
     const enrichedNewMessage = enrichMessageWithBotInfo(newMessage);
     setMessages(prevMessages => {
-      // Add the new message and let the hook handle deduplication and sorting
       return [enrichedNewMessage, ...prevMessages]; 
     });
     toast({ 
@@ -154,20 +153,32 @@ export default function MessageLogPage() {
     eventSource.onmessage = (event) => {
       try {
         const eventData = JSON.parse(event.data);
-        if (eventData.type === 'NEW_MESSAGE') {
-          const { message: rawNewMessage, tokenId } = eventData.payload;
+        
+        if (eventData.type === 'NEW_MESSAGE' || eventData.type === 'GENERIC_UPDATE') {
+          const { update: fullUpdate, tokenId } = eventData.payload;
           
-          // Ensure the message has sourceTokenId, even if it was set by webhook handler
-          // And ensure it's a valid message structure
-          if (rawNewMessage && typeof rawNewMessage.message_id !== 'undefined' && rawNewMessage.chat && typeof rawNewMessage.chat.id !== 'undefined') {
-            const newMessageWithTokenId = { ...rawNewMessage };
-            if (!newMessageWithTokenId.sourceTokenId && tokenId) {
-              newMessageWithTokenId.sourceTokenId = tokenId;
+          let messageFromUpdate: TelegramMessage | undefined = undefined;
+
+          if (fullUpdate.message) {
+            messageFromUpdate = fullUpdate.message;
+          } else if (fullUpdate.edited_message) {
+            messageFromUpdate = fullUpdate.edited_message;
+          } else if (fullUpdate.channel_post) {
+            messageFromUpdate = fullUpdate.channel_post;
+          } else if (fullUpdate.edited_channel_post) {
+            messageFromUpdate = fullUpdate.edited_channel_post;
+          }
+          // Add other update types like callback_query if they contain messages to log
+
+          if (messageFromUpdate && typeof messageFromUpdate.message_id !== 'undefined' && messageFromUpdate.chat && typeof messageFromUpdate.chat.id !== 'undefined') {
+            // The webhook should have already set sourceTokenId, userId, chatId, isGroupMessage
+            // If sourceTokenId is somehow missing on the message but present in payload, add it.
+            if (!messageFromUpdate.sourceTokenId && tokenId) {
+                messageFromUpdate.sourceTokenId = tokenId;
             }
-            // console.log('SSE: Received NEW_MESSAGE', newMessageWithTokenId);
-            addNewMessage(newMessageWithTokenId as TelegramMessage);
+            addNewMessage(messageFromUpdate as TelegramMessage);
           } else {
-            console.warn("SSE: Received NEW_MESSAGE with invalid structure, skipping:", rawNewMessage);
+            console.warn(`SSE: Received ${eventData.type} with no processable message in update, skipping:`, fullUpdate);
           }
         } else if (eventData.type === 'HEARTBEAT') {
           // console.log('SSE: Received HEARTBEAT');
@@ -181,58 +192,21 @@ export default function MessageLogPage() {
 
     eventSource.onerror = (error) => {
       console.error('SSE: EventSource failed:', error);
-      // Optional: Implement reconnection logic or inform user
-      // eventSource.close(); // Close on error to prevent constant retries by browser if server is down
     };
-
-    // Cleanup: Remove the old localStorage listener
-    // window.removeEventListener('storage', handleStorageChange);
 
     return () => {
       console.log(`SSE Connection closing for client ID: ${clientId}`);
       eventSource.close();
     };
-  }, [hasMounted, addNewMessage]); // Removed enrichMessageWithBotInfo and setMessages as they are part of addNewMessage closure
-
-  // REMOVE or COMMENT OUT the old handleStorageChange listener as SSE is now primary
-  /*
-  useEffect(() => {
-    if (!hasMounted) return;
-
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'telematrix_new_webhook_message' && event.newValue) {
-        try {
-          const newMessage = JSON.parse(event.newValue) as TelegramMessage;
-          addNewMessage(newMessage);
-        } catch (e) { 
-          console.error("Error parsing message from localStorage event", e); 
-        }
-      } else if (event.key === 'telematrix_webhook_messages' && event.newValue) {
-        try {
-          const newMessagesArray = JSON.parse(event.newValue) as TelegramMessage[];
-          if (Array.isArray(newMessagesArray)) {
-             setMessages(newMessagesArray.map(enrichMessageWithBotInfo));
-          }
-        } catch(e) {
-          console.error("Error parsing full message list from storage event", e);
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [hasMounted, addNewMessage, setMessages, enrichMessageWithBotInfo]);
-  */
+  }, [hasMounted, addNewMessage]);
 
   const handleReply = (message: TelegramMessage) => {
     setReplyingToMessage(message);
   };
 
-  const handleEdit = (message: TelegramMessage) => {
-    setEditingMessage(message);
-  };
+  // const handleEdit = (message: TelegramMessage) => { // Edit button removed
+  //   setEditingMessage(message);
+  // };
 
   const handleDeleteInitiate = (message: TelegramMessage) => {
     setDeletingMessage(message);
@@ -265,18 +239,18 @@ export default function MessageLogPage() {
     setDeletingMessage(null);
   };
 
-  const handleMessageEdited = (editedMessageFull: TelegramMessage) => {
-    setMessages(prevMessages => 
-      prevMessages.map(msg => 
-        (msg.message_id === editedMessageFull.message_id && msg.chat.id === editedMessageFull.chat.id) 
-        ? { ...msg, ...enrichMessageWithBotInfo(editedMessageFull) } // enrich again as sourceTokenId might not be in editedMessageFull
-        : msg
-      )
-    );
-  };
+  // const handleMessageEdited = (editedMessageFull: TelegramMessage) => { // Edit button removed
+  //   setMessages(prevMessages => 
+  //     prevMessages.map(msg => 
+  //       (msg.message_id === editedMessageFull.message_id && msg.chat.id === editedMessageFull.chat.id) 
+  //       ? { ...msg, ...enrichMessageWithBotInfo(editedMessageFull) } 
+  //       : msg
+  //     )
+  //   );
+  // };
 
   const handleCloseReplyModal = () => setReplyingToMessage(null);
-  const handleCloseEditModal = () => setEditingMessage(null);
+  // const handleCloseEditModal = () => setEditingMessage(null); // Edit button removed
 
   const handleDownloadFile = async (fileId: string, fileNameFromMessage?: string, sourceTokenId?: string) => {
     if (!sourceTokenId) {
@@ -329,12 +303,14 @@ export default function MessageLogPage() {
         </CardHeader>
         <CardContent>
           {!hasMounted ? (
-            <div className="flex items-center justify-center h-32">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="ml-2 text-muted-foreground">Loading messages...</p>
+            <div className="flex flex-col items-center justify-center h-[600px]"> {/* Changed h-32 to h-[600px] and added flex-col for centering text below spinner */}
+              <Loader2 className="h-12 w-12 animate-spin text-primary" /> {/* Optionally increase spinner size */}
+              <p className="mt-4 text-muted-foreground">Loading messages...</p> {/* Adjusted margin for better spacing */}
             </div>
           ) : messages.length === 0 ? (
-            <p className="text-muted-foreground text-center py-10">No messages recorded yet. Use "Get Updates" or ensure your webhook is set up and bots are active.</p>
+            <div className="flex flex-col items-center justify-center h-[600px]"> {/* Also apply to no messages state for consistency */}
+              <p className="text-muted-foreground text-center py-10">No messages recorded yet. Use "Get Updates" or ensure your webhook is set up and bots are active.</p>
+            </div>
           ) : (
             <ScrollArea className="h-[600px] p-1">
               <div className="space-y-4">
@@ -343,7 +319,6 @@ export default function MessageLogPage() {
                     key={`${msg.message_id}-${msg.date}-${msg.chat.id}-${index}`}
                     message={msg}
                     onReply={handleReply}
-                    onEdit={handleEdit}
                     onDelete={handleDeleteInitiate}
                     onDownloadFile={handleDownloadFile}
                   />
@@ -363,7 +338,7 @@ export default function MessageLogPage() {
         />
       )}
 
-      {editingMessage && (
+      {/* {editingMessage && ( // Edit button removed
         <EditMessageModal
           message={editingMessage}
           allTokens={tokens}
@@ -371,7 +346,7 @@ export default function MessageLogPage() {
           onClose={handleCloseEditModal}
           onMessageEdited={handleMessageEdited}
         />
-      )}
+      )} */}
 
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
         <AlertDialogContent>
