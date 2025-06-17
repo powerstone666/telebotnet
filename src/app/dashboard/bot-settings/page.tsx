@@ -26,6 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Input } from "@/components/ui/input"; // Added Input
 import { Reply } from "lucide-react"; // Import Reply icon
+import { Label } from "@/components/ui/label"; // Added Label
 
 
 const botCommandsFormSchema = z.object({
@@ -197,69 +198,63 @@ export default function BotSettingsPage() {
     }
   };
   
-  const botUsernameForDisplay = selectedBotDetails?.botInfo?.username || tokens.find(t => t.id === selectedTokenForDisplay)?.botInfo?.username;
-
-  // Filter tokens for the select dropdown
-  const filteredTokensForSelect = tokens.filter(token => {
-    const botUsername = token.botInfo?.username?.toLowerCase() || '';
-    const tokenId = token.id.toLowerCase();
-    const search = botSearchTerm.toLowerCase();
-    return botUsername.includes(search) || tokenId.includes(search);
+  const filteredTokens = tokens.filter(token => {
+    const searchTermLower = botSearchTerm.toLowerCase();
+    return (
+      token.id.toLowerCase().includes(searchTermLower) ||
+      (token.botInfo?.username && token.botInfo.username.toLowerCase().includes(searchTermLower)) ||
+      (token.botInfo?.first_name && token.botInfo.first_name.toLowerCase().includes(searchTermLower)) || // Corrected: firstName to first_name
+      (token.token && token.token.toLowerCase().includes(searchTermLower)) // Also allow searching by part of the token itself
+    );
   });
 
-  if (isLoadingTokens) {
-    return <div className="flex items-center justify-center h-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading tokens...</p></div>;
-  }
+  const botUsernameForDisplay = selectedBotDetails?.botInfo?.username || tokens.find(t => t.id === selectedTokenForDisplay)?.botInfo?.username;
+  const botFirstNameForDisplay = selectedBotDetails?.botInfo?.first_name; // Corrected: firstName to first_name
+  const botIdForDisplay = selectedBotDetails?.id;
+
 
   return (
-    <div className="container mx-auto p-4" suppressHydrationWarning>
-      <div className="space-y-8">
-        <div>
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-            <div>
-              {/* <h1 className="text-2xl font-bold mb-4">Bot Settings</h1> */}
-              {/* This h1 was removed as it's redundant with the one below */}
-              <h1 className="text-3xl font-headline font-bold tracking-tight">Bot Settings</h1>
-              <p className="text-muted-foreground">
-                Manage your bot's commands and other settings provided by Telegram.
-              </p>
-            </div>
+    <ScrollArea className="h-full p-4 md:p-6 lg:p-8">
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight flex items-center">
+              <Settings className="mr-2 h-6 w-6" /> Bot Command Settings
+            </h1>
+            <p className="text-muted-foreground">
+              Manage commands for your Telegram bots. Select a bot, view, set, or delete its commands.
+            </p>
           </div>
+          {selectedBotDetails && (
+             <Button variant="outline" size="sm" onClick={() => handleFetchCommands(selectedBotDetails.id)} disabled={isProcessing || isLoadingTokens}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${isProcessing ? 'animate-spin' : ''}`} />
+                Refresh Commands & Info
+            </Button>
+          )}
         </div>
 
-        {/* Bot Info Card */}
-        {selectedBotDetails && (
-          <Card className="max-w-2xl mx-auto">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <InfoIcon className="h-5 w-5 mr-2 text-blue-500" /> Bot Information: {selectedBotDetails.botInfo?.username || selectedBotDetails.id}
-              </CardTitle>
-              <CardDescription>Details for the currently selected bot.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <p><strong>Bot Name:</strong> {selectedBotDetails.botInfo?.first_name || 'N/A'}</p>
-              <p><strong>Username:</strong> @{selectedBotDetails.botInfo?.username || 'N/A'}</p>
-              <p><strong>Bot ID:</strong> {selectedBotDetails.botInfo?.id || 'N/A'}</p>
-              <p><strong>Can Join Groups:</strong> {selectedBotDetails.botInfo?.can_join_groups ? 'Yes' : 'No'}</p>
-              <p><strong>Can Read All Group Messages:</strong> {selectedBotDetails.botInfo?.can_read_all_group_messages ? 'Yes' : 'No'}</p>
-              <p><strong>Supports Inline Queries:</strong> {selectedBotDetails.botInfo?.supports_inline_queries ? 'Yes' : 'No'}</p>
-              <p><strong>Token ID (Internal):</strong> {selectedBotDetails.id}</p>
-              {selectedBotDetails.webhookStatus && (
-                  <p><strong>Webhook Status:</strong> <Badge variant={selectedBotDetails.webhookStatus === 'set' ? 'default' : selectedBotDetails.webhookStatus === 'unset' ? 'outline' : 'destructive'}>{selectedBotDetails.webhookStatus}</Badge></p>
-              )}
-              {selectedBotDetails.lastWebhookSetAttempt && (
-                  <p><strong>Last Webhook Activity:</strong> {new Date(selectedBotDetails.lastWebhookSetAttempt).toLocaleString()}</p>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        <Card className="max-w-2xl mx-auto">
+        <Card>
           <CardHeader>
-            <CardTitle>Manage Bot Commands</CardTitle>
-            <CardDescription>View, set, or delete the list of commands your bot offers.</CardDescription>
+            <CardTitle>Select Bot & Configure Commands</CardTitle>
+            <CardDescription>
+              Choose a bot to manage its command list. You can view existing commands, update them, or delete all commands.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="bot-search">Search Bot (ID, Username, Name, Token)</Label>
+              <div className="flex items-center space-x-2">
+                <Search className="h-5 w-5 text-muted-foreground" />
+                <Input
+                  id="bot-search"
+                  placeholder="Enter bot ID, username, name, or part of token..."
+                  value={botSearchTerm}
+                  onChange={(e) => setBotSearchTerm(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <FormField
@@ -267,58 +262,68 @@ export default function BotSettingsPage() {
                   name="tokenId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Select Bot</FormLabel>
-                      <Select 
+                      <FormLabel>Bot Token</FormLabel>
+                      <Select
                         onValueChange={(value) => {
                           field.onChange(value);
-                          const tokenDetails = tokens.find(t => t.id === value);
-                          setSelectedBotDetails(tokenDetails || null);
-                          if (tokenDetails && !tokenDetails.botInfo) { // Fetch if botInfo is missing
-                              fetchAndStoreBotInfo(tokenDetails.token, tokenDetails.id);
-                          }
+                          // setSelectedTokenForDisplay(value); // This is handled by useEffect now
+                          // const tokenDetails = tokens.find(t => t.id === value);
+                          // setSelectedBotDetails(tokenDetails || null);
+                          // if (tokenDetails && !tokenDetails.botInfo) {
+                          //   fetchAndStoreBotInfo(tokenDetails.token, tokenDetails.id);
+                          // }
                         }}
                         defaultValue={field.value}
+                        disabled={isLoadingTokens || tokens.length === 0}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select a bot token..." />
+                            <SelectValue placeholder={isLoadingTokens ? "Loading bots..." : (tokens.length === 0 ? "No bots found. Add tokens first." : "Select a bot")} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <div className="p-2">
-                            <div className="relative">
-                              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <Input 
-                                type="search"
-                                placeholder="Search bots..."
-                                value={botSearchTerm}
-                                onChange={(e) => {
-                                  e.stopPropagation(); // Prevent select from closing
-                                  setBotSearchTerm(e.target.value);
-                                }}
-                                className="pl-8 w-full mb-1"
-                              />
-                            </div>
-                          </div>
                           {isLoadingTokens ? (
-                            <SelectItem value="loading" disabled>Loading tokens...</SelectItem>
-                          ) : filteredTokensForSelect.length === 0 ? (
-                            <SelectItem value="notfound" disabled>No bots found matching "{botSearchTerm}".</SelectItem>
-                          ) : (
-                            <ScrollArea className="h-[200px]">
-                            {filteredTokensForSelect.map(token => (
+                            <SelectItem value="loading" disabled>Loading...</SelectItem>
+                          ) : filteredTokens.length > 0 ? (
+                            filteredTokens.map((token) => (
                               <SelectItem key={token.id} value={token.id}>
-                                {token.botInfo?.username || token.id}
+                                {token.botInfo?.username ? `${token.botInfo.username} (${token.botInfo.first_name || 'N/A'})` : `Bot ID: ${token.id.substring(0, 8)}...`} {/* Corrected: firstName to first_name */}
                               </SelectItem>
-                            ))}
-                            </ScrollArea>
+                            ))
+                          ) : (
+                            <SelectItem value="notfound" disabled>
+                              {tokens.length > 0 ? "No bots match your search." : "No bots available."}
+                            </SelectItem>
                           )}
                         </SelectContent>
                       </Select>
+                      <FormDescription>
+                        Select the bot you want to configure.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                {selectedBotDetails && (
+                  <Card className="mt-4 bg-secondary/50">
+                    <CardHeader className="pb-2 pt-4">
+                      <CardTitle className="text-lg flex items-center">
+                        <InfoIcon className="mr-2 h-5 w-5 text-primary" />
+                        Bot Details: {selectedBotDetails.botInfo?.username || "(Username not fetched yet)"}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-sm space-y-1 pb-4">
+                      <p><strong>Username:</strong> {selectedBotDetails.botInfo?.username || "N/A"}</p>
+                      <p><strong>First Name:</strong> {selectedBotDetails.botInfo?.first_name || "N/A"}</p> {/* Corrected: firstName to first_name */}
+                      <p><strong>ID:</strong> {selectedBotDetails.botInfo?.id || "N/A"}</p>
+                      <p><strong>Token ID (internal):</strong> {selectedBotDetails.id}</p>
+                      <p><strong>Can Join Groups:</strong> {selectedBotDetails.botInfo?.can_join_groups ? 'Yes' : 'No'}</p> {/* Corrected: canJoinGroups to can_join_groups */}
+                      <p><strong>Can Read All Group Messages:</strong> {selectedBotDetails.botInfo?.can_read_all_group_messages ? 'Yes' : 'No'}</p> {/* Corrected: canReadAllGroupMessages to can_read_all_group_messages */}
+                      <p><strong>Supports Inline Queries:</strong> {selectedBotDetails.botInfo?.supports_inline_queries ? 'Yes' : 'No'}</p> {/* Corrected: supportsInlineQueries to supports_inline_queries */}
+                    </CardContent>
+                  </Card>
+                )}
 
                 <FormField
                   control={form.control}
@@ -360,37 +365,36 @@ export default function BotSettingsPage() {
           </CardContent>
         </Card>
 
-        {selectedTokenForDisplay && currentCommands !== null && (
-          <Card className="mt-6 max-w-2xl mx-auto">
-              <CardHeader>
-                  <CardTitle className="flex justify-between items-center">
-                  <span>Current Commands for {botUsernameForDisplay || "Selected Bot"}</span>
-                   <Button variant="ghost" size="sm" onClick={() => handleFetchCommands(selectedTokenForDisplay)} disabled={isProcessing}>
-                      <RefreshCw className={`mr-1 h-4 w-4 ${isProcessing && form.getValues("tokenId") === selectedTokenForDisplay ? 'animate-spin' : ''}`} />
-                      Refresh
-                  </Button>
-                  </CardTitle>
-                  <CardDescription>
-                  {currentCommands.length > 0 ? `This bot has ${currentCommands.length} command(s) registered.` : "This bot currently has no commands registered."}
-                  </CardDescription>
-              </CardHeader>
-              {currentCommands.length > 0 && (
-                  <CardContent>
-                      <ScrollArea className="h-[200px] p-1 border rounded-md">
-                          <ul className="space-y-1 p-2">
-                          {currentCommands.map(cmd => (
-                              <li key={cmd.command} className="text-sm flex items-center">
-                                  <Badge variant="secondary" className="mr-2">/{cmd.command}</Badge> 
-                                  <span className="text-muted-foreground">{cmd.description}</span>
-                              </li>
-                          ))}
-                          </ul>
-                      </ScrollArea>
-                  </CardContent>
-              )}
+        {selectedTokenForDisplay && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <ListChecks className="mr-2 h-6 w-6" />
+                Current Commands for {botUsernameForDisplay || `Bot ID: ${selectedTokenForDisplay.substring(0,8)}...`}
+              </CardTitle>
+              <CardDescription>
+                These are the commands currently set for the selected bot.
+                {botFirstNameForDisplay && ` (Name: ${botFirstNameForDisplay})`}
+                {botIdForDisplay && ` (Bot User ID: ${botIdForDisplay})`}
+              </CardDescription>
+            </CardHeader>
+            {currentCommands && (
+              <CardContent>
+                  <ScrollArea className="h-[200px] p-1 border rounded-md">
+                      <ul className="space-y-1 p-2">
+                      {currentCommands.map(cmd => (
+                          <li key={cmd.command} className="text-sm flex items-center">
+                              <Badge variant="secondary" className="mr-2">/{cmd.command}</Badge> 
+                              <span className="text-muted-foreground">{cmd.description}</span>
+                          </li>
+                      ))}
+                      </ul>
+                  </ScrollArea>
+              </CardContent>
+            )}
           </Card>
         )}
       </div>
-    </div>
+    </ScrollArea>
   );
 }

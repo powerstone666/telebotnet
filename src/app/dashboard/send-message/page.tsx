@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,7 +23,7 @@ import { useStoredTokens } from '@/lib/localStorage';
 import type { MessageType } from '@/lib/types'; 
 import { sendMessageAction, sendPhotoAction, sendDocumentAction, sendVideoAction } from './actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, SendHorizontal, Paperclip } from "lucide-react";
+import { Loader2, SendHorizontal, Paperclip, Search } from "lucide-react"; // Added Search
 import { useState, useRef } from "react";
 
 const MAX_FILE_SIZE_MB = 50;
@@ -73,16 +72,19 @@ export default function SendMessagePage() {
   const { toast } = useToast();
   const [isSending, setIsSending] = useState(false);
   const [enableMarkdown, setEnableMarkdown] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null); // Made current mutable
+  const [botSearchTerm, setBotSearchTerm] = useState(''); // New state for bot search
 
   const form = useForm<SendMessageFormValues>({
     resolver: zodResolver(sendMessageFormSchema),
     defaultValues: {
       tokenId: "",
       chatId: "",
-      messageType: "Text",
+      messageType: "Text" as MessageType, // Explicit type
       text: "",
+      mediaFile: undefined, // Explicitly undefined
       replyToMessageId: "",
+      parseMode: undefined, // Explicitly undefined
     },
   });
   
@@ -154,6 +156,16 @@ export default function SendMessagePage() {
     }
   }
 
+  const filteredTokens = tokens.filter(token => {
+    const searchTermLower = botSearchTerm.toLowerCase();
+    return (
+      token.id.toLowerCase().includes(searchTermLower) ||
+      (token.botInfo?.username && token.botInfo.username.toLowerCase().includes(searchTermLower)) ||
+      (token.botInfo?.first_name && token.botInfo.first_name.toLowerCase().includes(searchTermLower)) ||
+      (token.token && token.token.toLowerCase().includes(searchTermLower))
+    );
+  });
+
   if (isLoadingTokens) {
     return <div className="flex items-center justify-center h-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading tokens...</p></div>;
   }
@@ -173,6 +185,19 @@ export default function SendMessagePage() {
           <CardDescription>Select a bot, recipient, message type, and content.</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="space-y-2 mb-6">
+            <Label htmlFor="bot-search-sendmessage">Search Bot (ID, Username, Name, Token)</Label>
+            <div className="flex items-center space-x-2">
+              <Search className="h-5 w-5 text-muted-foreground" />
+              <Input
+                id="bot-search-sendmessage"
+                placeholder="Enter bot ID, username, name, or part of token..."
+                value={botSearchTerm}
+                onChange={(e) => setBotSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
@@ -184,15 +209,23 @@ export default function SendMessagePage() {
                     <Select onValueChange={field.onChange} defaultValue={field.value} disabled={tokens.length === 0}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={tokens.length === 0 ? "No tokens available" : "Select a bot token..."} />
+                          <SelectValue placeholder={isLoadingTokens ? "Loading bots..." : (tokens.length === 0 ? "No bots found. Add tokens first." : "Select a bot")} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {tokens.map(token => (
-                          <SelectItem key={token.id} value={token.id}>
-                            {token.botInfo?.username || `Token ID: ${token.id}`}
+                        {isLoadingTokens ? (
+                            <SelectItem value="loading" disabled>Loading...</SelectItem>
+                        ) : filteredTokens.length > 0 ? (
+                          filteredTokens.map(token => (
+                            <SelectItem key={token.id} value={token.id}>
+                              {token.botInfo?.username ? `${token.botInfo.username} (${token.botInfo.first_name || 'N/A'})` : `Bot ID: ${token.id.substring(0, 8)}...`}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="notfound" disabled>
+                            {tokens.length > 0 ? "No bots match your search." : "No bots available."}
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -223,7 +256,7 @@ export default function SendMessagePage() {
                     <FormLabel>Message Type</FormLabel>
                     <Select onValueChange={(value) => {
                       field.onChange(value as MessageType);
-                      form.setValue("mediaFile", undefined); // Reset file on type change
+                      form.resetField("mediaFile"); // Use resetField
                       if (fileInputRef.current) fileInputRef.current.value = "";
                     }} defaultValue={field.value}>
                       <FormControl>
@@ -247,16 +280,24 @@ export default function SendMessagePage() {
                 <FormField
                   control={form.control}
                   name="mediaFile"
-                  render={({ field: { onChange, value, ...restField } }) => (
+                  render={({ field: { onChange, onBlur, name, ref: fieldRefFn } }) => ( // Removed value from destructuring as it's not directly used here
                     <FormItem>
                       <FormLabel>Media File ({watchedMessageType})</FormLabel>
                       <FormControl>
                         <Input 
                           type="file" 
-                          ref={fileInputRef}
-                          onChange={(e) => onChange(e.target.files ? e.target.files[0] : undefined)} 
-                          {...restField}
-                          accept={
+                          onBlur={onBlur}
+                          name={name}
+                          onChange={(e) => {
+                            onChange(e.target.files ? e.target.files[0] : undefined);
+                          }} 
+                          ref={(instance: HTMLInputElement | null) => { // Added type for instance
+                            fieldRefFn(instance);
+                            if (fileInputRef) { // Keep this check as fileInputRef could be null during initial renders or if not properly managed by React
+                                fileInputRef.current = instance;
+                            }
+                          }}
+                          accept={ // Corrected syntax for accept prop
                             watchedMessageType === 'Photo' ? 'image/*' :
                             watchedMessageType === 'Video' ? 'video/*' :
                             undefined /* all for document */
@@ -295,9 +336,9 @@ export default function SendMessagePage() {
                     onCheckedChange={(checked) => {
                       setEnableMarkdown(Boolean(checked));
                       if (Boolean(checked)) {
-                        form.setValue('parseMode', 'MarkdownV2'); // Default to MarkdownV2 when enabled
+                        form.setValue('parseMode', 'MarkdownV2'); // This should be fine now with explicit defaultValues
                       } else {
-                        form.setValue('parseMode', undefined);
+                        form.resetField('parseMode'); // Use resetField
                       }
                     }}
                 />

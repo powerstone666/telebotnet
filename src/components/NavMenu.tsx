@@ -28,8 +28,6 @@ const navItemsData = [
   { href: '/dashboard/get-updates', label: 'Get Updates', icon: Activity },
   { href: '/dashboard/message-log', label: 'Message Log', icon: MessageSquareText },
   { href: '/dashboard/bot-messages', label: 'Bot Messages', icon: Send }, // Added new nav item for Bot Messages
-  { href: '/dashboard/users', label: 'Users', icon: Users },
-  { href: '/dashboard/groups', label: 'Groups', icon: Group },
   { href: '/dashboard/send-message', label: 'Send Message/Media', icon: Send },
   { href: '/dashboard/chat-user-info', label: 'Chat/User Info', icon: Info },
   { href: '/dashboard/bot-settings', label: 'Bot Settings', icon: Wrench },

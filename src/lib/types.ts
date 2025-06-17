@@ -20,6 +20,8 @@ export interface StoredToken {
   isCurrentWebhook?: boolean;
 }
 
+export type MessageType = 'Text' | 'Photo' | 'Document' | 'Video';
+
 export interface TelegramUser {
   id: number; // This is the user_id
   is_bot: boolean;

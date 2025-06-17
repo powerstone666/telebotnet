@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from 'react';
@@ -24,6 +23,7 @@ import { getChatAction, getChatMemberAction, getChatAdministratorsAction } from 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Search } from "lucide-react";
+import { Label } from "@/components/ui/label"; // Added Label
 
 const chatUserInfoFormSchema = z.object({
   tokenId: z.string().min(1, "Please select a bot token."),
@@ -50,6 +50,7 @@ export default function ChatUserInfoPage() {
   const [isFetching, setIsFetching] = useState(false);
   const [resultData, setResultData] = useState<TelegramChat | ChatMember | ChatMember[] | null>(null);
   const [currentOperation, setCurrentOperation] = useState<ChatUserInfoFormValues['operation'] | undefined>(undefined);
+  const [botSearchTerm, setBotSearchTerm] = useState(''); // New state for bot search
 
 
   const form = useForm<ChatUserInfoFormValues>({
@@ -102,6 +103,16 @@ export default function ChatUserInfoPage() {
     }
   }
   
+  const filteredTokens = tokens.filter(token => {
+    const searchTermLower = botSearchTerm.toLowerCase();
+    return (
+      token.id.toLowerCase().includes(searchTermLower) ||
+      (token.botInfo?.username && token.botInfo.username.toLowerCase().includes(searchTermLower)) ||
+      (token.botInfo?.first_name && token.botInfo.first_name.toLowerCase().includes(searchTermLower)) ||
+      (token.token && token.token.toLowerCase().includes(searchTermLower))
+    );
+  });
+
   const getOperationLabel = (op: ChatUserInfoFormValues['operation'] | undefined) => {
     if (!op) return "Details";
     switch(op) {
@@ -131,6 +142,20 @@ export default function ChatUserInfoPage() {
           <CardDescription>Select a bot, operation, and provide the required ID(s).</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="space-y-2 mb-6">
+            <Label htmlFor="bot-search-chatinfo">Search Bot (ID, Username, Name, Token)</Label>
+            <div className="flex items-center space-x-2">
+              <Search className="h-5 w-5 text-muted-foreground" />
+              <Input
+                id="bot-search-chatinfo"
+                placeholder="Enter bot ID, username, name, or part of token..."
+                value={botSearchTerm}
+                onChange={(e) => setBotSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
+
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
@@ -142,15 +167,23 @@ export default function ChatUserInfoPage() {
                     <Select onValueChange={field.onChange} defaultValue={field.value} disabled={tokens.length === 0}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={tokens.length === 0 ? "No tokens available" : "Select a bot token..."} />
+                          <SelectValue placeholder={isLoadingTokens ? "Loading bots..." : (tokens.length === 0 ? "No bots found. Add tokens first." : "Select a bot")} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {tokens.map(token => (
-                          <SelectItem key={token.id} value={token.id}>
-                            {token.botInfo?.username || `Token ID: ${token.id}`}
+                        {isLoadingTokens ? (
+                          <SelectItem value="loading" disabled>Loading...</SelectItem>
+                        ) : filteredTokens.length > 0 ? (
+                          filteredTokens.map(token => (
+                            <SelectItem key={token.id} value={token.id}>
+                              {token.botInfo?.username ? `${token.botInfo.username} (${token.botInfo.first_name || 'N/A'})` : `Bot ID: ${token.id.substring(0, 8)}...`}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="notfound" disabled>
+                            {tokens.length > 0 ? "No bots match your search." : "No bots available."}
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -12,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react'; // Added Search
 
 export default function TokenManagementPage() {
   const { tokens, addToken, removeToken, updateToken, isLoading: isLoadingTokens } = useStoredTokens();
@@ -20,6 +19,7 @@ export default function TokenManagementPage() {
   const [isLoadingTokenMap, setIsLoadingTokenMap] = useState<Record<string, boolean>>({});
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(60); // Default 60 seconds
+  const [botSearchTerm, setBotSearchTerm] = useState(""); // New state for bot search
 
   const handleTokenAdded = (newToken: StoredToken) => {
     addToken(newToken);
@@ -111,6 +111,14 @@ export default function TokenManagementPage() {
     };
   }, [autoRefreshEnabled, tokens, refreshInterval, refreshSingleTokenInfo]);
 
+  const filteredTokens = tokens.filter(token => {
+    const searchTermLower = botSearchTerm.toLowerCase();
+    return (
+      token.id.toLowerCase().includes(searchTermLower) ||
+      (token.botInfo?.username && token.botInfo.username.toLowerCase().includes(searchTermLower)) ||
+      (token.token && token.token.toLowerCase().includes(searchTermLower))
+    );
+  });
 
   return (
     <div className="space-y-8">
@@ -122,6 +130,42 @@ export default function TokenManagementPage() {
       </div>
 
       <TokenForm onTokenAdded={handleTokenAdded} existingTokens={tokens} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Your Bot Tokens</CardTitle>
+          <CardDescription>View and manage your added bot tokens. Search by Bot Username, Token ID, or part of the token itself.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Search className="h-5 w-5 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search your bots (username, ID, token part)..."
+              value={botSearchTerm}
+              onChange={(e) => setBotSearchTerm(e.target.value)}
+              className="w-full sm:w-1/2 md:w-1/3"
+            />
+          </div>
+          {isLoadingTokens ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading tokens...</p>
+            </div>
+          ) : filteredTokens.length === 0 ? (
+             <p className="text-muted-foreground text-center py-4">
+                {tokens.length > 0 ? "No bots match your search." : "No tokens added yet."}
+             </p>
+          ) : (
+            <TokenTable
+              tokens={filteredTokens} // Use filtered tokens
+              onDeleteToken={handleDeleteToken}
+              onRefreshInfo={refreshSingleTokenInfo}
+              isLoadingTokenMap={isLoadingTokenMap}
+            />
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

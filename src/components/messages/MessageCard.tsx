@@ -62,95 +62,109 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
   };
 
   return (
-    <Card className="shadow-sm hover:shadow-md transition-shadow duration-200" style={style}> {/* Apply style here */}
-      <CardHeader className="flex flex-row items-start space-x-3 p-4">
-        <Avatar className="h-10 w-10 border">
+    <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 w-full" style={style}> {/* Apply style here, ensure w-full */}
+      <CardHeader className="flex flex-row items-start space-x-2 sm:space-x-3 p-3 sm:p-4">
+        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 border">
           <AvatarFallback>{getInitials(senderName)}</AvatarFallback>
         </Avatar>
-        <div className="flex-1">
-          <CardTitle className="text-base font-semibold flex items-center justify-between">
-            <span>{senderName}</span>
+        <div className="flex-1 min-w-0"> {/* Added min-w-0 for better flex truncation/wrapping */}
+          <CardTitle className="text-sm sm:text-base font-semibold flex flex-col sm:flex-row sm:items-center sm:justify-between">
+            <span className="truncate mr-1">{senderName}</span>
             {message.botUsername && (
-              <span className="text-xs font-normal text-muted-foreground flex items-center">
+              <span className="text-xs font-normal text-muted-foreground flex items-center whitespace-nowrap">
                 via <Bot className="h-3 w-3 ml-1 mr-0.5" /> {message.botUsername}
               </span>
             )}
           </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            in {chatTitle} (Chat ID: {message.chat.id}) &bull; User ID: {message.from?.id || 'N/A'} &bull; Msg ID: {message.message_id}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {formattedDate || 'Loading date...'} {message.edit_date && `(edited ${format(fromUnixTime(message.edit_date), 'PP pp')})`}
-          </p>
+          {/* Metadata container for better responsive stacking if needed later */}
+          <div className="text-xs text-muted-foreground space-y-0.5">
+            <p className="truncate" title={`${chatTitle} (Chat ID: ${message.chat.id})`}>
+              in {chatTitle} (ID: {message.chat.id})
+            </p>
+            <p className="truncate">
+              User ID: {message.from?.id || 'N/A'} &bull; Msg ID: {message.message_id}
+            </p>
+            {message.chat.description && (
+              <p className="text-xs text-muted-foreground mt-0.5 truncate" title={message.chat.description}>
+                Chat Desc: <span className="italic">{message.chat.description}</span>
+              </p>
+            )}
+            <p className="mt-0.5 sm:mt-1">
+              {formattedDate || 'Loading date...'} {message.edit_date && `(edited ${format(fromUnixTime(message.edit_date), 'PP pp')})`}
+            </p>
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="px-4 pb-3 space-y-3">
+      <CardContent className="px-3 sm:px-4 pb-2 sm:pb-3 space-y-2 sm:space-y-3">
         {message.text && <p className="text-sm whitespace-pre-wrap break-words">{message.text}</p>}
         
-        {message.caption && !message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words">Caption: {message.caption}</p>}
-        {message.caption && message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words mt-1">Additionally captioned: {message.caption}</p>}
+        {/* Media container to group all media types and their captions/downloads */}
+        {(largestPhoto || message.document || message.video) && (
+          <div className="space-y-2 mt-2 border rounded-md p-2 bg-muted/20">
+            {message.caption && !message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words mb-1">Caption: {message.caption}</p>}
+            {message.caption && message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words mt-1 mb-1">Additionally captioned: {message.caption}</p>}
 
-
-        {largestPhoto && (
-          <div className="mt-2 border rounded-md p-2 bg-muted/20">
-            <NextImage 
-              src={`https://placehold.co/300x200.png?text=Photo+Preview`} 
-              alt={message.caption || "Sent photo"} 
-              width={300} height={200} 
-              className="rounded-md object-contain mx-auto"
-              data-ai-hint="photograph image"
-            />
-            {canDownload && (
-              <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => handleDownload(largestPhoto.file_id, `photo_${largestPhoto.file_unique_id}.jpg`)}>
-                <Download className="mr-1 h-4 w-4" /> Download Photo
-              </Button>
+            {largestPhoto && (
+              <div className="space-y-1">
+                <NextImage 
+                  src={`https://placehold.co/300x200.png?text=Photo+Preview`} 
+                  alt={message.caption || "Sent photo"} 
+                  width={300} height={200} 
+                  className="rounded-md object-contain mx-auto max-w-full h-auto" 
+                  data-ai-hint="photograph image"
+                />
+                {canDownload && (
+                  <Button size="sm" variant="outline" className="w-full" onClick={() => handleDownload(largestPhoto.file_id, `photo_${largestPhoto.file_unique_id}.jpg`)}>
+                    <Download className="mr-1 h-4 w-4" /> Download Photo
+                  </Button>
+                )}
+              </div>
+            )}
+            {message.document && (
+              <div className="flex items-center space-x-2 p-1.5 rounded-md bg-background hover:bg-muted/50">
+                <FileText className="h-5 w-5 text-primary shrink-0" />
+                <span className="text-sm flex-1 truncate" title={message.document.file_name || 'Document'}>{message.document.file_name || 'Document'}</span>
+                {canDownload && (
+                  <Button size="icon" variant="ghost" onClick={() => handleDownload(message.document!.file_id, message.document!.file_name)}>
+                    <Download className="h-4 w-4" />
+                    <span className="sr-only">Download Document</span>
+                  </Button>
+                )}
+              </div>
+            )}
+            {message.video && (
+              <div className="flex items-center space-x-2 p-1.5 rounded-md bg-background hover:bg-muted/50">
+                <Video className="h-5 w-5 text-primary shrink-0" />
+                <span className="text-sm flex-1 truncate" title={message.video.file_name || 'Video'}>{message.video.file_name || `Video (${message.video.width}x${message.video.height}, ${message.video.duration}s)`}</span>
+                {canDownload && (
+                  <Button size="icon" variant="ghost" onClick={() => handleDownload(message.video!.file_id, message.video!.file_name)}>
+                    <Download className="h-4 w-4" />
+                    <span className="sr-only">Download Video</span>
+                  </Button>
+                )}
+              </div>
+            )}
+            {!canDownload && (
+              <p className="text-xs text-muted-foreground flex items-center pt-1">
+                <AlertCircle className="h-3 w-3 mr-1"/> Download not available (token info missing).
+              </p>
             )}
           </div>
-        )}
-        {message.document && (
-          <div className="flex items-center space-x-2 p-2 border rounded-md bg-muted/30 hover:bg-muted/50">
-            <FileText className="h-5 w-5 text-primary shrink-0" />
-            <span className="text-sm flex-1 truncate" title={message.document.file_name || 'Document'}>{message.document.file_name || 'Document'}</span>
-            {canDownload && (
-              <Button size="icon" variant="ghost" onClick={() => handleDownload(message.document!.file_id, message.document!.file_name)}>
-                <Download className="h-4 w-4" />
-                <span className="sr-only">Download Document</span>
-              </Button>
-            )}
-          </div>
-        )}
-         {message.video && (
-          <div className="flex items-center space-x-2 p-2 border rounded-md bg-muted/30 hover:bg-muted/50">
-            <Video className="h-5 w-5 text-primary shrink-0" />
-            <span className="text-sm flex-1 truncate" title={message.video.file_name || 'Video'}>{message.video.file_name || `Video (${message.video.width}x${message.video.height}, ${message.video.duration}s)`}</span>
-             {canDownload && (
-              <Button size="icon" variant="ghost" onClick={() => handleDownload(message.video!.file_id, message.video!.file_name)}>
-                <Download className="h-4 w-4" />
-                <span className="sr-only">Download Video</span>
-              </Button>
-            )}
-          </div>
-        )}
-         {!canDownload && (message.document || message.video || largestPhoto) && (
-          <p className="text-xs text-muted-foreground flex items-center">
-            <AlertCircle className="h-3 w-3 mr-1"/> Download not available (token info missing).
-          </p>
         )}
       </CardContent>
-      <CardFooter className="px-4 py-3 border-t flex justify-start gap-1">
+      <CardFooter className="px-3 sm:px-4 py-2 sm:py-3 border-t flex flex-wrap justify-start gap-1">
         {onEdit && isBotMessage && message.text && (
-            <Button variant="ghost" size="sm" onClick={() => onEdit(message)} disabled={!canManage}>
-                <Pencil className="mr-1 h-4 w-4" /> Edit
+            <Button variant="ghost" size="sm" onClick={() => onEdit(message)} disabled={!canManage} className="text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9">
+                <Pencil className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> Edit
             </Button>
         )}
-        {/* Show reply button if the original sender is not a bot */}
         {message.from && !message.from.is_bot && (
-            <Button variant="ghost" size="sm" onClick={() => onReply(message)} disabled={!canManage}>
-                <Reply className="mr-1 h-4 w-4" /> Reply
+            <Button variant="ghost" size="sm" onClick={() => onReply(message)} disabled={!canManage} className="text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9">
+                <Reply className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> Reply
             </Button>
         )}
-        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90" onClick={() => onDelete(message)} disabled={!canManage}>
-          <Trash2 className="mr-1 h-4 w-4" /> Delete
+        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90 text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9" onClick={() => onDelete(message)} disabled={!canManage}>
+          <Trash2 className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> Delete
         </Button>
       </CardFooter>
     </Card>
