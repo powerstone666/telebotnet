@@ -95,17 +95,17 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
           </div>
         </div>
       </CardHeader>
-      <CardContent className="px-3 sm:px-4 pb-2 sm:pb-3 space-y-2 sm:space-y-3">
+      <CardContent className="px-4 sm:px-6 py-3 sm:py-4 space-y-3 sm:space-y-4"> {/* Increased padding and space-y */}
         {message.text && <p className="text-sm whitespace-pre-wrap break-words">{message.text}</p>}
         
         {/* Media container to group all media types and their captions/downloads */}
         {(largestPhoto || message.document || message.video) && (
-          <div className="space-y-2 mt-2 border rounded-md p-2 bg-muted/20">
-            {message.caption && !message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words mb-1">Caption: {message.caption}</p>}
-            {message.caption && message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words mt-1 mb-1">Additionally captioned: {message.caption}</p>}
+          <div className="space-y-3 mt-3 border rounded-lg p-3 bg-muted/20"> {/* Increased mt, p, space-y and rounded-lg */}
+            {message.caption && !message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words mb-2">Caption: {message.caption}</p>} {/* Increased mb */}
+            {message.caption && message.text && <p className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words mt-1 mb-2">Additionally captioned: {message.caption}</p>} {/* Increased mb */}
 
             {largestPhoto && (
-              <div className="space-y-1">
+              <div className="space-y-2"> {/* Increased space-y */}
                 <NextImage 
                   src={`https://placehold.co/300x200.png?text=Photo+Preview`} 
                   alt={message.caption || "Sent photo"} 
@@ -114,14 +114,14 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
                   data-ai-hint="photograph image"
                 />
                 {canDownload && (
-                  <Button size="sm" variant="outline" className="w-full" onClick={() => handleDownload(largestPhoto.file_id, `photo_${largestPhoto.file_unique_id}.jpg`)}>
-                    <Download className="mr-1 h-4 w-4" /> Download Photo
+                  <Button size="sm" variant="outline" className="w-full mt-1" onClick={() => handleDownload(largestPhoto.file_id, `photo_${largestPhoto.file_unique_id}.jpg`)}>
+                    <Download className="mr-1.5 h-4 w-4" /> Download Photo {/* Increased mr */}
                   </Button>
                 )}
               </div>
             )}
             {message.document && (
-              <div className="flex items-center space-x-2 p-1.5 rounded-md bg-background hover:bg-muted/50">
+              <div className="flex items-center space-x-3 p-2 rounded-md bg-background hover:bg-muted/50"> {/* Increased space-x and p */}
                 <FileText className="h-5 w-5 text-primary shrink-0" />
                 <span className="text-sm flex-1 truncate" title={message.document.file_name || 'Document'}>{message.document.file_name || 'Document'}</span>
                 {canDownload && (
@@ -133,7 +133,7 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
               </div>
             )}
             {message.video && (
-              <div className="flex items-center space-x-2 p-1.5 rounded-md bg-background hover:bg-muted/50">
+              <div className="flex items-center space-x-3 p-2 rounded-md bg-background hover:bg-muted/50"> {/* Increased space-x and p */}
                 <Video className="h-5 w-5 text-primary shrink-0" />
                 <span className="text-sm flex-1 truncate" title={message.video.file_name || 'Video'}>{message.video.file_name || `Video (${message.video.width}x${message.video.height}, ${message.video.duration}s)`}</span>
                 {canDownload && (
@@ -145,14 +145,14 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
               </div>
             )}
             {!canDownload && (
-              <p className="text-xs text-muted-foreground flex items-center pt-1">
-                <AlertCircle className="h-3 w-3 mr-1"/> Download not available (token info missing).
+              <p className="text-xs text-muted-foreground flex items-center pt-1.5"> {/* Increased pt */}
+                <AlertCircle className="h-3 w-3 mr-1.5"/> Download not available (token info missing). {/* Increased mr */}
               </p>
             )}
           </div>
         )}
       </CardContent>
-      <CardFooter className="px-3 sm:px-4 py-2 sm:py-3 border-t flex flex-wrap justify-start gap-1">
+      <CardFooter className="px-4 sm:px-6 py-2.5 sm:py-3.5 border-t flex flex-wrap justify-start gap-1.5 sm:gap-2"> {/* Increased padding and gap */}
         {onEdit && isBotMessage && message.text && (
             <Button variant="ghost" size="sm" onClick={() => onEdit(message)} disabled={!canManage} className="text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9">
                 <Pencil className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> Edit
