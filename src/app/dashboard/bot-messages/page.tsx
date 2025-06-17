@@ -22,8 +22,10 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useStoredTokens } from '@/lib/localStorage';
 import { sendMessageAction, deleteMessageAction } from './actions'; 
-import { Loader2, Send } from 'lucide-react';
+import { Loader2, Send, Search } from 'lucide-react'; // Added Search
 import { useMemo } from 'react';
+import { Input } from "@/components/ui/input"; // Added Input
+import { Label } from "@/components/ui/label"; // Added Label
 
 // Store for messages actively managed (sent/edited/deleted) by this page instance for the selectedTokenId
 const pageManagedMessagesStore: { [key: string]: TelegramMessage[] } = {};
@@ -44,6 +46,7 @@ export default function BotMessagesPage() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const { toast } = useToast();
+  const [botSearchTerm, setBotSearchTerm] = useState(''); // New state for bot search
 
   useEffect(() => {
     if (tokens.length > 0 && !selectedTokenId) {
@@ -101,6 +104,16 @@ export default function BotMessagesPage() {
       eventSource.close();
     };
   }, [tokens]); // Effect depends on tokens to identify "our" bots
+
+  const filteredTokens = tokens.filter(token => {
+    const searchTermLower = botSearchTerm.toLowerCase();
+    return (
+      token.id.toLowerCase().includes(searchTermLower) ||
+      (token.botInfo?.username && token.botInfo.username.toLowerCase().includes(searchTermLower)) ||
+      (token.botInfo?.first_name && token.botInfo.first_name.toLowerCase().includes(searchTermLower)) ||
+      (token.token && token.token.toLowerCase().includes(searchTermLower))
+    );
+  });
 
   const handleSendMessage = async () => {
     if (!selectedTokenId || !chatId || !messageText.trim()) {
@@ -197,6 +210,31 @@ export default function BotMessagesPage() {
 
   const handleCloseEditModal = () => setEditingMessage(null);
 
+  const handleDeleteLocal_BotMessages = (messageToDelete: TelegramMessage) => {
+    if (!messageToDelete?.chat?.id || !messageToDelete?.message_id) {
+      toast({ title: "Error", description: "Cannot remove message: missing information.", variant: "destructive" });
+      return;
+    }
+
+    // Remove from pageManagedMessages and update store
+    setPageManagedMessages(prev => {
+      const updated = prev.filter(m => 
+        !(m.message_id === messageToDelete.message_id && m.chat.id === messageToDelete.chat.id && m.sourceTokenId === messageToDelete.sourceTokenId)
+      );
+      if (selectedTokenId && pageManagedMessagesStore[selectedTokenId]) {
+        pageManagedMessagesStore[selectedTokenId] = updated;
+      }
+      return updated;
+    });
+
+    // Remove from otherBotMessages
+    setOtherBotMessages(prev => prev.filter(m => 
+      !(m.message_id === messageToDelete.message_id && m.chat.id === messageToDelete.chat.id && m.sourceTokenId === messageToDelete.sourceTokenId)
+    ));
+
+    toast({ title: "Message Removed", description: "The message has been removed from the local view." });
+  };
+
   const combinedMessages = useMemo(() => {
     const allMessagesMap = new Map<string, TelegramMessage>();
 
@@ -221,57 +259,75 @@ export default function BotMessagesPage() {
   }, [pageManagedMessages, otherBotMessages]);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-headline font-bold tracking-tight">Bot Message Center</h1>
-        <p className="text-muted-foreground">
-          Send, view, and manage messages sent by your bots.
-        </p>
-      </div>
-
+    <div className="space-y-6 p-4 md:p-6">
       <Card>
         <CardHeader>
-          <CardTitle>Send New Message</CardTitle>
+          <CardTitle>Manage Bot Messages</CardTitle>
+          <CardDescription>
+            Send messages, and view/edit/delete messages sent by the selected bot in a specific chat.
+            Also shows other messages received by any of your registered bots.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label htmlFor="bot-select" className="block text-sm font-medium text-gray-700 mb-1">Select Bot</label>
-            <Select value={selectedTokenId} onValueChange={setSelectedTokenId}>
-              <SelectTrigger id="bot-select">
-                <SelectValue placeholder="Select a bot" />
-              </SelectTrigger>
-              <SelectContent>
-                {tokens.map(token => (
-                  <SelectItem key={token.id} value={token.id}>
-                    {token.botInfo?.username || token.id} (ID: {token.id.substring(0,6)})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+            <div>
+              <Label htmlFor="bot-search-botmessages">Search & Select Bot</Label>
+              <div className="flex items-center space-x-2 mt-1">
+                <Search className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                <Input
+                  id="bot-search-botmessages"
+                  type="search"
+                  placeholder="Filter bots..."
+                  value={botSearchTerm}
+                  onChange={(e) => setBotSearchTerm(e.target.value)}
+                  className="flex-grow"
+                />
+              </div>
+              <Select value={selectedTokenId} onValueChange={setSelectedTokenId} disabled={tokens.length === 0} >
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder={tokens.length === 0 ? "No bots available. Add tokens first." : "Select a bot"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredTokens.length > 0 ? (
+                    filteredTokens.map(token => (
+                      <SelectItem key={token.id} value={token.id}>
+                        {token.botInfo?.username || token.botInfo?.first_name || `Bot ID: ${token.id.substring(0,8)}...`}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-match" disabled>
+                      {botSearchTerm ? "No bots match your search." : (tokens.length === 0 ? "No bots available. Add tokens first." : "Select a bot from the list")}
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="chat-id-botmessages">Chat ID</Label>
+              <Textarea
+                id="chat-id-botmessages"
+                placeholder="Enter User ID, Group ID, or Channel ID"
+                value={chatId}
+                onChange={(e) => setChatId(e.target.value)}
+                rows={1}
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <Label htmlFor="message-text-botmessages">Message</Label>
+              <Textarea
+                id="message-text-botmessages"
+                placeholder="Type your message here..."
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                rows={3}
+                className="mt-2"
+              />
+            </div>
+            <Button onClick={handleSendMessage} disabled={isSending || !selectedTokenId || !chatId.trim() || !messageText.trim()}>
+              {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />} Send Message
+            </Button>
           </div>
-          <div>
-            <label htmlFor="chat-id" className="block text-sm font-medium text-gray-700 mb-1">Chat ID (User ID, Group ID, or Channel ID)</label>
-            <Textarea
-              id="chat-id"
-              placeholder="Enter target Chat ID (e.g., 123456789, -100123456789, or @channelusername)"
-              value={chatId}
-              onChange={(e) => setChatId(e.target.value)}
-              rows={1}
-            />
-          </div>
-          <div>
-            <label htmlFor="message-text" className="block text-sm font-medium text-gray-700 mb-1">Message</label>
-            <Textarea
-              id="message-text"
-              placeholder="Type your message here..."
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              rows={3}
-            />
-          </div>
-          <Button onClick={handleSendMessage} disabled={isSending || !selectedTokenId || !chatId.trim() || !messageText.trim()}>
-            {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />} Send Message
-          </Button>
         </CardContent>
       </Card>
 
@@ -301,7 +357,8 @@ export default function BotMessagesPage() {
                     message={message}
                     onReply={() => { /* No direct reply action from this page; users reply in Telegram */ }}
                     onEdit={isDirectlyManagedBySelectedBot && message.text ? handleEdit : undefined} // Edit only for text messages managed by the selected bot
-                    onDelete={handleDeleteInitiate} // Delete can be attempted for any message with a sourceTokenId
+                    onDeleteTelegram={handleDeleteInitiate} // Corrected: Was onDelete
+                    onDeleteLocal={handleDeleteLocal_BotMessages} // Added for local deletion
                     isBotMessage={true} // All messages on this page are considered bot messages
                     // onDownloadFile could be added if bots send downloadable files
                   />

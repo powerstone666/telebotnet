@@ -69,6 +69,16 @@ export default function BotSettingsPage() {
   const [botSearchTerm, setBotSearchTerm] = useState(''); // New state for bot search
   const [selectedBotDetails, setSelectedBotDetails] = useState<StoredToken | null>(null); // New state for selected bot details
 
+  const filteredTokens = tokens.filter(token => {
+    const searchTermLower = botSearchTerm.toLowerCase();
+    return (
+      token.id.toLowerCase().includes(searchTermLower) ||
+      (token.botInfo?.username && token.botInfo.username.toLowerCase().includes(searchTermLower)) ||
+      (token.botInfo?.first_name && token.botInfo.first_name.toLowerCase().includes(searchTermLower)) ||
+      (token.token && token.token.toLowerCase().includes(searchTermLower))
+    );
+  });
+
   const form = useForm<BotCommandsFormValues>({
     resolver: zodResolver(botCommandsFormSchema),
     defaultValues: {
@@ -198,16 +208,6 @@ export default function BotSettingsPage() {
     }
   };
   
-  const filteredTokens = tokens.filter(token => {
-    const searchTermLower = botSearchTerm.toLowerCase();
-    return (
-      token.id.toLowerCase().includes(searchTermLower) ||
-      (token.botInfo?.username && token.botInfo.username.toLowerCase().includes(searchTermLower)) ||
-      (token.botInfo?.first_name && token.botInfo.first_name.toLowerCase().includes(searchTermLower)) || // Corrected: firstName to first_name
-      (token.token && token.token.toLowerCase().includes(searchTermLower)) // Also allow searching by part of the token itself
-    );
-  });
-
   const botUsernameForDisplay = selectedBotDetails?.botInfo?.username || tokens.find(t => t.id === selectedTokenForDisplay)?.botInfo?.username;
   const botFirstNameForDisplay = selectedBotDetails?.botInfo?.first_name; // Corrected: firstName to first_name
   const botIdForDisplay = selectedBotDetails?.id;
@@ -291,8 +291,8 @@ export default function BotSettingsPage() {
                               </SelectItem>
                             ))
                           ) : (
-                            <SelectItem value="notfound" disabled>
-                              {tokens.length > 0 ? "No bots match your search." : "No bots available."}
+                            <SelectItem value="no-bots" disabled>
+                              {botSearchTerm ? "No bots match your search." : (tokens.length === 0 ? "No bots found. Add tokens first." : "No bots available.")}
                             </SelectItem>
                           )}
                         </SelectContent>

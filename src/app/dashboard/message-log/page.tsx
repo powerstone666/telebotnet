@@ -36,6 +36,21 @@ import { useLocalStorageMessagesWithExpiry } from '@/hooks/useLocalStorageMessag
 import { VariableSizeList as List, ListChildComponentProps } from 'react-window'; // Changed to VariableSizeList
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { MessageCardSkeleton } from '@/components/messages/MessageCardSkeleton';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  // CardDescription is already imported
+} from "@/components/ui/card"; // Import Card components
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // Import Select components
+import { Label } from "@/components/ui/label"; // Import Label
 
 const MESSAGE_EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000;
 const initialMessagesForHook: TelegramMessage[] = [];
@@ -57,6 +72,7 @@ export default function MessageLogPage() {
   const [hasMounted, setHasMounted] = useState(false);
   const [filterTokenIds, setFilterTokenIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+
 
   const tokensRef = useRef(tokens);
   useEffect(() => {
@@ -225,7 +241,8 @@ export default function MessageLogPage() {
                 key={`${message.chat.id}-${message.message_id}-${message.sourceTokenId || 'unknown'}-${index}`}
                 message={message} 
                 onReply={handleReply}
-                onDelete={handleDeleteInitiate}
+                onDeleteTelegram={handleDeleteInitiate} // Changed from onDelete
+                onDeleteLocal={handleDeleteLocal} // Added new prop
                 onDownloadFile={handleDownloadFile}
                 isBotMessage={message.from?.is_bot || !!message.botUsername}
               />
@@ -265,6 +282,19 @@ export default function MessageLogPage() {
   const handleDeleteInitiate = (message: TelegramMessage) => {
     setDeletingMessage(message);
     setIsDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteLocal = (messageToDelete: TelegramMessage) => {
+    setMessages(prev => prev.filter(m => 
+        !(m.message_id === messageToDelete.message_id && 
+          m.chat.id === messageToDelete.chat.id && 
+          m.sourceTokenId === messageToDelete.sourceTokenId
+        )
+    ));
+    toast({
+      title: "Message Removed Locally",
+      description: "The message has been removed from this list.",
+    });
   };
 
   const handleConfirmDelete = async () => {
@@ -393,6 +423,7 @@ export default function MessageLogPage() {
           className="w-full text-sm sm:text-base" /* Adjusted text size */
         />
       </div>
+
       <CardDescription className="text-xs sm:text-sm">
         Displaying {displayedMessages.length} of {messages.length} messages (max 1000, older than 1 day are auto-removed).
       </CardDescription>

@@ -21,6 +21,7 @@ export default function TokenManagementPage() {
   const [botSearchTerm, setBotSearchTerm] = useState("");
   const [isManuallyRefreshing, setIsManuallyRefreshing] = useState(false);
 
+
   const handleTokenAdded = (newToken: StoredToken) => {
     addToken(newToken);
     // Optionally, refresh info for the newly added token immediately
@@ -177,45 +178,6 @@ export default function TokenManagementPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Card for Auto-Refresh Settings - REMOVED */}
-      {/* 
-      <Card>
-        <CardHeader>
-          <CardTitle>Auto-Refresh Settings</CardTitle>
-          <CardDescription>
-            Periodically update bot information and webhook status in the background.
-            The manual refresh button in the table header provides on-demand updates.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="auto-refresh-switch"
-              checked={autoRefreshEnabled}
-              onCheckedChange={setAutoRefreshEnabled}
-              aria-label="Enable auto-refresh"
-            />
-            <Label htmlFor="auto-refresh-switch">Enable Background Auto-Refresh</Label>
-          </div>
-          {autoRefreshEnabled && (
-            <div className="flex items-center space-x-2">
-              <Label htmlFor="refresh-interval-input" className="whitespace-nowrap">Refresh every</Label>
-              <Input
-                id="refresh-interval-input"
-                type="number"
-                min="10" 
-                value={refreshInterval}
-                onChange={(e) => setRefreshInterval(Math.max(10, parseInt(e.target.value, 10) || 60))}
-                className="w-24"
-                aria-label="Refresh interval in seconds"
-              />
-              <Label htmlFor="refresh-interval-input">seconds</Label>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      */}
     </div>
   );
 }

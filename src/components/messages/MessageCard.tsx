@@ -13,7 +13,8 @@ interface MessageCardProps {
   message: TelegramMessage;
   onReply: (message: TelegramMessage) => void;
   onEdit?: (message: TelegramMessage) => void; // Made onEdit optional
-  onDelete: (message: TelegramMessage) => void;
+  onDeleteTelegram: (message: TelegramMessage) => void; // Renamed for clarity
+  onDeleteLocal: (message: TelegramMessage) => void; // New prop for local deletion
   onDownloadFile?: (fileId: string, fileName: string | undefined, sourceTokenId?: string) => void;
   isBotMessage?: boolean; // New prop to identify bot messages
   style?: React.CSSProperties; // Added for react-window
@@ -31,7 +32,16 @@ const getLargestPhoto = (photos?: TelegramPhotoSize[]): TelegramPhotoSize | unde
   return photos.reduce((largest, current) => (current.width * current.height > largest.width * largest.height ? current : largest));
 };
 
-export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile, isBotMessage = false, style }: MessageCardProps) {
+export function MessageCard({ 
+  message, 
+  onReply, 
+  onEdit, 
+  onDeleteTelegram, 
+  onDeleteLocal, 
+  onDownloadFile, 
+  isBotMessage = false, 
+  style 
+}: MessageCardProps) {
   const [formattedDate, setFormattedDate] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,7 +61,10 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
   const chatTitle = message.chat.title || message.chat.username || (message.chat.type === 'private' ? `${message.chat.first_name || ''} ${message.chat.last_name || ''}`.trim() : 'Unknown Chat');
   const largestPhoto = getLargestPhoto(message.photo);
   const canDownload = onDownloadFile && message.sourceTokenId;
-  const canManage = message.sourceTokenId; // Assume if sourceTokenId is present, we can attempt management actions
+  const canManageTelegram = !!message.sourceTokenId; // True if sourceTokenId exists, indicating we can attempt API actions
+  // Deletability by bot: A message is generally deletable by a bot if the bot sent it, or if it has admin rights in a group for other messages.
+  // For simplicity, we'll allow attempting deletion if sourceTokenId is known. The API will ultimately decide.
+  const canDeleteFromTelegram = canManageTelegram; // Simplified: if we know the bot, we can try to delete.
 
   const handleDownload = (fileId?: string, fileName?: string) => {
     if (canDownload && fileId) {
@@ -154,17 +167,34 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
       </CardContent>
       <CardFooter className="px-4 sm:px-6 py-2.5 sm:py-3.5 border-t flex flex-wrap justify-start gap-1.5 sm:gap-2"> {/* Increased padding and gap */}
         {onEdit && isBotMessage && message.text && (
-            <Button variant="ghost" size="sm" onClick={() => onEdit(message)} disabled={!canManage} className="text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9">
+            <Button variant="ghost" size="sm" onClick={() => onEdit(message)} disabled={!canManageTelegram} className="text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9">
                 <Pencil className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> Edit
             </Button>
         )}
         {message.from && !message.from.is_bot && (
-            <Button variant="ghost" size="sm" onClick={() => onReply(message)} disabled={!canManage} className="text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9">
+            <Button variant="ghost" size="sm" onClick={() => onReply(message)} disabled={!canManageTelegram} className="text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9">
                 <Reply className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> Reply
             </Button>
         )}
-        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90 text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9" onClick={() => onDelete(message)} disabled={!canManage}>
-          <Trash2 className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> Delete
+        {canDeleteFromTelegram && (
+            <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-destructive hover:text-destructive/90 text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9"
+                onClick={() => onDeleteTelegram(message)} 
+                title="Delete message from Telegram (and list)"
+            >
+                <Trash2 className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> Delete (TG)
+            </Button>
+        )}
+        <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 text-xs px-2 py-1 h-auto sm:text-sm sm:px-3 sm:py-1.5 sm:h-9"
+            onClick={() => onDeleteLocal(message)}
+            title="Remove message from this list only"
+        >
+            <Trash2 className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> Remove (Local)
         </Button>
       </CardFooter>
     </Card>

@@ -12,6 +12,7 @@ import {
   Group,
   Info,
   Wrench, // Added Wrench icon for Bot Settings
+  DownloadCloud, // Added DownloadCloud icon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -31,6 +32,7 @@ const navItemsData = [
   { href: '/dashboard/send-message', label: 'Send Message/Media', icon: Send },
   { href: '/dashboard/chat-user-info', label: 'Chat/User Info', icon: Info },
   { href: '/dashboard/bot-settings', label: 'Bot Settings', icon: Wrench },
+  { href: '/dashboard/download-file', label: 'Download File', icon: DownloadCloud }, // Added new nav item for Download File
 ];
 
 // Pre-calculate tooltip props to ensure stable object identity for each menu item

@@ -223,7 +223,7 @@ export default function SendMessagePage() {
                           ))
                         ) : (
                           <SelectItem value="notfound" disabled>
-                            {tokens.length > 0 ? "No bots match your search." : "No bots available."}
+                            {botSearchTerm ? "No bots match your search." : (tokens.length === 0 ? "No bots found. Add tokens first." : "No bots available.")}
                           </SelectItem>
                         )}
                       </SelectContent>

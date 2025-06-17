@@ -201,8 +201,8 @@ export default function ChatUserInfoPage() {
                             </SelectItem>
                           ))
                         ) : (
-                          <SelectItem value="notfound" disabled>
-                            {tokens.length > 0 ? "No bots match your search." : "No bots available."}
+                          <SelectItem value="no-bots" disabled>
+                            {botSearchTerm ? "No bots match your search." : (tokens.length === 0 ? "No bots found. Add tokens first." : "No bots available.")}
                           </SelectItem>
                         )}
                       </SelectContent>
