@@ -15,11 +15,9 @@ import { Loader2, Search, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { Button } from '@/components/ui/button'; // Added Button
 
 export default function TokenManagementPage() {
-  const { tokens, addToken, removeToken, updateToken, isLoading: isLoadingTokens } = useStoredTokens(); // Added removeToken
+  const { tokens, addToken, removeToken, updateToken, isLoading: isLoadingTokens } = useStoredTokens();
   const { toast } = useToast();
   const [isLoadingTokenMap, setIsLoadingTokenMap] = useState<Record<string, boolean>>({});
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState(60); // Default 60 seconds
   const [botSearchTerm, setBotSearchTerm] = useState("");
   const [isManuallyRefreshing, setIsManuallyRefreshing] = useState(false);
 
@@ -99,19 +97,6 @@ export default function TokenManagementPage() {
     }
   }, [isLoadingTokens, tokens, refreshSingleTokenInfo]);
 
-
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
-    if (autoRefreshEnabled && tokens.length > 0 && refreshInterval >= 10) { // Minimum 10 seconds interval
-      intervalId = setInterval(() => {
-        console.log("Auto-refreshing tokens...");
-        tokens.forEach(token => refreshSingleTokenInfo(token, true)); // Suppress toasts for auto-refresh
-      }, refreshInterval * 1000);
-    }
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [autoRefreshEnabled, tokens, refreshInterval, refreshSingleTokenInfo]);
 
   const filteredTokens = tokens.filter(token => {
     const searchTermLower = botSearchTerm.toLowerCase();
@@ -193,6 +178,8 @@ export default function TokenManagementPage() {
         </CardContent>
       </Card>
 
+      {/* Card for Auto-Refresh Settings - REMOVED */}
+      {/* 
       <Card>
         <CardHeader>
           <CardTitle>Auto-Refresh Settings</CardTitle>
@@ -217,7 +204,7 @@ export default function TokenManagementPage() {
               <Input
                 id="refresh-interval-input"
                 type="number"
-                min="10" // Sensible minimum to avoid spamming API
+                min="10" 
                 value={refreshInterval}
                 onChange={(e) => setRefreshInterval(Math.max(10, parseInt(e.target.value, 10) || 60))}
                 className="w-24"
@@ -228,6 +215,7 @@ export default function TokenManagementPage() {
           )}
         </CardContent>
       </Card>
+      */}
       
       {isLoadingTokens ? (
          <div className="flex items-center justify-center py-10">
