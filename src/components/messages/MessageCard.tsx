@@ -4,7 +4,7 @@ import type { TelegramMessage, TelegramPhotoSize } from "@/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { FileText, Image as ImageIcon, Video, Download, Reply, Bot, AlertCircle, Trash2 } from "lucide-react";
+import { FileText, Image as ImageIcon, Video, Download, Reply, Bot, AlertCircle, Pencil, Trash2 } from "lucide-react"; // Added Pencil back
 import { format, fromUnixTime } from 'date-fns';
 import NextImage from "next/image"; 
 import { useState, useEffect } from 'react';
@@ -12,8 +12,10 @@ import { useState, useEffect } from 'react';
 interface MessageCardProps {
   message: TelegramMessage;
   onReply: (message: TelegramMessage) => void;
+  onEdit?: (message: TelegramMessage) => void; // Made onEdit optional
   onDelete: (message: TelegramMessage) => void;
   onDownloadFile?: (fileId: string, fileName: string | undefined, sourceTokenId?: string) => void;
+  isBotMessage?: boolean; // New prop to identify bot messages
 }
 
 function getInitials(name: string = ""): string {
@@ -28,7 +30,7 @@ const getLargestPhoto = (photos?: TelegramPhotoSize[]): TelegramPhotoSize | unde
   return photos.reduce((largest, current) => (current.width * current.height > largest.width * largest.height ? current : largest));
 };
 
-export function MessageCard({ message, onReply, onDelete, onDownloadFile }: MessageCardProps) {
+export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile, isBotMessage = false }: MessageCardProps) {
   const [formattedDate, setFormattedDate] = useState<string | null>(null);
 
   useEffect(() => {
@@ -132,9 +134,16 @@ export function MessageCard({ message, onReply, onDelete, onDownloadFile }: Mess
         )}
       </CardContent>
       <CardFooter className="px-4 py-3 border-t flex justify-start gap-1">
-        <Button variant="ghost" size="sm" onClick={() => onReply(message)} disabled={!canManage}>
-          <Reply className="mr-1 h-4 w-4" /> Reply
-        </Button>
+        {onEdit && isBotMessage && (
+            <Button variant="ghost" size="sm" onClick={() => onEdit(message)} disabled={!canManage || !message.text}>
+                <Pencil className="mr-1 h-4 w-4" /> Edit
+            </Button>
+        )}
+        {!isBotMessage && (
+            <Button variant="ghost" size="sm" onClick={() => onReply(message)} disabled={!canManage}>
+                <Reply className="mr-1 h-4 w-4" /> Reply
+            </Button>
+        )}
         <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90" onClick={() => onDelete(message)} disabled={!canManage}>
           <Trash2 className="mr-1 h-4 w-4" /> Delete
         </Button>

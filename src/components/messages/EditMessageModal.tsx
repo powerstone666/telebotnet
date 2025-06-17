@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -17,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { StoredToken, TelegramMessage } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { editMessageTextAction } from '@/app/dashboard/message-log/actions';
+import { editMessageTextAction } from '@/app/dashboard/bot-messages/actions'; 
 import { Loader2, Pencil } from "lucide-react"; 
 
 interface EditMessageModalProps {
@@ -36,10 +35,13 @@ export function EditMessageModal({ message, allTokens, isOpen, onClose, onMessag
 
   useEffect(() => {
     if (isOpen) {
-      setEditedText(message.text || ""); // Initialize with current message text
-      if (message.sourceTokenId && allTokens.find(t => t.id === message.sourceTokenId)) {
+      setEditedText(message.text || "");
+      // Ensure message.sourceTokenId is used if available and valid, otherwise try to pick one.
+      if (message.sourceTokenId && allTokens.some(t => t.id === message.sourceTokenId)) {
         setSelectedTokenId(message.sourceTokenId);
-      } else if (allTokens.length === 1) {
+      } else if (allTokens.length > 0) {
+        // Fallback to the first token if sourceTokenId is not set or invalid, and tokens are available
+        // This is particularly for the Bot Messages page where sourceTokenId might be the active bot.
         setSelectedTokenId(allTokens[0].id);
       } else {
         setSelectedTokenId(undefined); 
@@ -62,11 +64,17 @@ export function EditMessageModal({ message, allTokens, isOpen, onClose, onMessag
         toast({ title: "Token Error", description: "Selected bot token not found.", variant: "destructive" });
         return;
     }
+    
+    // Ensure chat.id and message_id are present
+    if (!message.chat?.id || typeof message.message_id === 'undefined') {
+        toast({ title: "Message Error", description: "Cannot edit message: chat ID or message ID is missing.", variant: "destructive" });
+        return;
+    }
 
     setIsSending(true);
     const result = await editMessageTextAction(
       tokenToUse,
-      message.chat.id.toString(),
+      message.chat.id.toString(), // Ensure chat.id is a string if your action expects it, or handle number type
       message.message_id,
       editedText
     );
@@ -75,11 +83,9 @@ export function EditMessageModal({ message, allTokens, isOpen, onClose, onMessag
     if (result.success) {
       toast({ title: "Message Edited", description: "Your message has been edited successfully." });
       if (typeof result.data === 'object' && result.data !== null && 'message_id' in result.data) {
-        // If the API returns the full edited message object
         onMessageEdited(result.data as TelegramMessage);
       } else {
-        // If API returns true, or for inline messages, we update locally
-        onMessageEdited({ ...message, text: editedText, edit_date: Math.floor(Date.now() / 1000) });
+        onMessageEdited({ ...message, text: editedText, edit_date: Math.floor(Date.now() / 1000), sourceTokenId: selectedTokenId });
       }
       onClose(); 
     } else {
@@ -93,7 +99,7 @@ export function EditMessageModal({ message, allTokens, isOpen, onClose, onMessag
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
-          <DialogTitle>Edit Message from {senderName}</DialogTitle>
+          <DialogTitle>Edit Message {message.from?.is_bot ? `by Bot: ${senderName}` : `from ${senderName}`}</DialogTitle>
           <DialogDescription>
             In chat: {message.chat.title || message.chat.username || message.chat.id}.
             <blockquote className="mt-2 p-2 border-l-4 bg-muted/50 rounded-r-md text-xs text-muted-foreground italic">
@@ -118,7 +124,7 @@ export function EditMessageModal({ message, allTokens, isOpen, onClose, onMessag
             <Select 
               value={selectedTokenId} 
               onValueChange={setSelectedTokenId}
-              disabled={allTokens.length === 0}
+              disabled={allTokens.length === 0 || (!!message.sourceTokenId && allTokens.some(t => t.id === message.sourceTokenId))}
             >
               <SelectTrigger id="edit-token-select" className="w-full">
                 <SelectValue placeholder={allTokens.length === 0 ? "No tokens available" : "Select a bot token..."} />
@@ -131,7 +137,12 @@ export function EditMessageModal({ message, allTokens, isOpen, onClose, onMessag
                 ))}
               </SelectContent>
             </Select>
-            {!selectedTokenId && allTokens.length > 0 && <p className="text-xs text-destructive">Please select a token.</p>}
+            {(!selectedTokenId && allTokens.length > 0) && <p className="text-xs text-destructive">Please select a token.</p>}
+            {(!!message.sourceTokenId && allTokens.some(t => t.id === message.sourceTokenId)) && 
+              <p className="text-xs text-muted-foreground mt-1">
+                Editing with the original sending bot: {allTokens.find(t => t.id === message.sourceTokenId)?.botInfo?.username || message.sourceTokenId}
+              </p>
+            }
           </div>
         </div>
         <DialogFooter>
