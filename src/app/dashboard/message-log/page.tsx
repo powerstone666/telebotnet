@@ -38,7 +38,7 @@ import { MessageCardSkeleton } from '@/components/messages/MessageCardSkeleton';
 
 const MESSAGE_EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000;
 const initialMessagesForHook: TelegramMessage[] = []; // Ensure this line is present
-const ESTIMATED_MESSAGE_HEIGHT = 200; // Ensure this line is present
+const ESTIMATED_MESSAGE_HEIGHT = 320; // Updated from 200
 
 export default function MessageLogPage() {
   const { tokens } = useStoredTokens();
