@@ -213,13 +213,18 @@ export default function BotSettingsPage() {
 
   return (
     <div className="container mx-auto p-4" suppressHydrationWarning>
-      <h1 className="text-2xl font-bold mb-4">Bot Settings</h1>
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-headline font-bold tracking-tight">Bot Settings</h1>
-          <p className="text-muted-foreground">
-            Manage your bot's commands and other settings provided by Telegram.
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+            <div>
+              {/* <h1 className="text-2xl font-bold mb-4">Bot Settings</h1> */}
+              {/* This h1 was removed as it's redundant with the one below */}
+              <h1 className="text-3xl font-headline font-bold tracking-tight">Bot Settings</h1>
+              <p className="text-muted-foreground">
+                Manage your bot's commands and other settings provided by Telegram.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Bot Info Card */}

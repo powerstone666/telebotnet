@@ -34,17 +34,18 @@ import { Input } from "@/components/ui/input";
 import { useLocalStorageMessagesWithExpiry } from '@/hooks/useLocalStorageMessagesWithExpiry';
 import { FixedSizeList as List, ListChildComponentProps } from 'react-window'; // Import react-window
 import AutoSizer from 'react-virtualized-auto-sizer'; // Import AutoSizer
+import { MessageCardSkeleton } from '@/components/messages/MessageCardSkeleton'; // Import the skeleton component
 
 const MESSAGE_EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000;
-const initialMessagesForHook: TelegramMessage[] = [];
-const ESTIMATED_MESSAGE_HEIGHT = 200; // Adjust as needed, this is an estimate
+const initialMessagesForHook: TelegramMessage[] = []; // Ensure this line is present
+const ESTIMATED_MESSAGE_HEIGHT = 200; // Ensure this line is present
 
 export default function MessageLogPage() {
-  const { tokens } = useStoredTokens(); 
+  const { tokens } = useStoredTokens();
   const [messages, setMessages, clearMessages, isLoadingMessages] = useLocalStorageMessagesWithExpiry(
-    'telematrix_webhook_messages_v2', 
-    initialMessagesForHook, // Use the stable initial value
-    tokens, // Pass tokens here for the hook to use
+    'telematrix_webhook_messages_v2',
+    initialMessagesForHook, 
+    tokens, 
     MESSAGE_EXPIRY_DURATION_MS
   );
   const [replyingToMessage, setReplyingToMessage] = useState<TelegramMessage | null>(null);
@@ -65,6 +66,24 @@ export default function MessageLogPage() {
   useEffect(() => {
     setHasMounted(true);
   }, []);
+
+  // Early return for loading state using skeletons
+  if (!hasMounted || isLoadingMessages) {
+    return (
+      <div className="flex flex-col h-full p-4 md:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-4">
+          {/* Placeholder for filter/search controls area */}
+          <div className="h-10 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+          <div className="h-10 bg-gray-200 rounded w-1/4 animate-pulse"></div>
+        </div>
+        {/* Display multiple skeletons to represent a list loading */}
+        <MessageCardSkeleton />
+        <MessageCardSkeleton />
+        <MessageCardSkeleton />
+        <MessageCardSkeleton /> 
+      </div>
+    );
+  }
 
   const addNewMessage = useCallback((newMessage: TelegramMessage) => {
     if (!newMessage || typeof newMessage.message_id === 'undefined' || !newMessage.chat || typeof newMessage.chat.id === 'undefined') {
@@ -274,14 +293,6 @@ export default function MessageLogPage() {
       </div>
     );
   }, [displayedMessages, handleReply, handleDeleteInitiate, handleDownloadFile]);
-
-  if (!hasMounted || isLoadingMessages) { // Show loader if not mounted or messages are loading
-    return (
-      <div className="flex items-center justify-center" style={{minHeight: 'calc(100vh - 150px)'}}> 
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-8">

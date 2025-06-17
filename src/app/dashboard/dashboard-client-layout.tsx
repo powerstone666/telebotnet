@@ -12,7 +12,7 @@ import {
 import { AppLogo } from "@/components/AppLogo";
 import { NavMenu } from "@/components/NavMenu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2 } from 'lucide-react';
+import { MessageCardSkeleton } from '@/components/messages/MessageCardSkeleton'; // Import the skeleton component
 
 export function DashboardClientLayout({ children }: { children: React.ReactNode }) {
   const [hasMounted, setHasMounted] = useState(false);
@@ -24,11 +24,18 @@ export function DashboardClientLayout({ children }: { children: React.ReactNode 
   if (!hasMounted) {
     return (
       <div 
-        className="flex items-center justify-center" 
-        style={{minHeight: '100vh'}}
-        suppressHydrationWarning={true} // Added here for the loading state
+        className="flex flex-col h-screen w-screen items-center justify-center p-4 md:p-6 space-y-4 bg-background"
+        suppressHydrationWarning={true}
       >
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        {/* Simulate a simplified header/top bar loading state */}
+        <div className="h-14 w-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4"></div>
+        
+        {/* Display a few skeletons to indicate content loading */}
+        <div className="w-full max-w-4xl space-y-4">
+            <MessageCardSkeleton />
+            <MessageCardSkeleton />
+            <MessageCardSkeleton />
+        </div>
       </div>
     );
   }
