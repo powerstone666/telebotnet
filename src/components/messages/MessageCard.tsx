@@ -16,6 +16,7 @@ interface MessageCardProps {
   onDelete: (message: TelegramMessage) => void;
   onDownloadFile?: (fileId: string, fileName: string | undefined, sourceTokenId?: string) => void;
   isBotMessage?: boolean; // New prop to identify bot messages
+  style?: React.CSSProperties; // Added for react-window
 }
 
 function getInitials(name: string = ""): string {
@@ -30,7 +31,7 @@ const getLargestPhoto = (photos?: TelegramPhotoSize[]): TelegramPhotoSize | unde
   return photos.reduce((largest, current) => (current.width * current.height > largest.width * largest.height ? current : largest));
 };
 
-export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile, isBotMessage = false }: MessageCardProps) {
+export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile, isBotMessage = false, style }: MessageCardProps) {
   const [formattedDate, setFormattedDate] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,7 +62,7 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
   };
 
   return (
-    <Card className="shadow-sm hover:shadow-md transition-shadow duration-200">
+    <Card className="shadow-sm hover:shadow-md transition-shadow duration-200" style={style}> {/* Apply style here */}
       <CardHeader className="flex flex-row items-start space-x-3 p-4">
         <Avatar className="h-10 w-10 border">
           <AvatarFallback>{getInitials(senderName)}</AvatarFallback>
@@ -76,7 +77,10 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
             )}
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            in {chatTitle} &bull; {formattedDate || 'Loading date...'} {message.edit_date && `(edited ${format(fromUnixTime(message.edit_date), 'PP pp')})`}
+            in {chatTitle} (Chat ID: {message.chat.id}) &bull; User ID: {message.from?.id || 'N/A'} &bull; Msg ID: {message.message_id}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {formattedDate || 'Loading date...'} {message.edit_date && `(edited ${format(fromUnixTime(message.edit_date), 'PP pp')})`}
           </p>
         </div>
       </CardHeader>
@@ -134,12 +138,13 @@ export function MessageCard({ message, onReply, onEdit, onDelete, onDownloadFile
         )}
       </CardContent>
       <CardFooter className="px-4 py-3 border-t flex justify-start gap-1">
-        {onEdit && isBotMessage && (
-            <Button variant="ghost" size="sm" onClick={() => onEdit(message)} disabled={!canManage || !message.text}>
+        {onEdit && isBotMessage && message.text && (
+            <Button variant="ghost" size="sm" onClick={() => onEdit(message)} disabled={!canManage}>
                 <Pencil className="mr-1 h-4 w-4" /> Edit
             </Button>
         )}
-        {!isBotMessage && (
+        {/* Show reply button if the original sender is not a bot */}
+        {message.from && !message.from.is_bot && (
             <Button variant="ghost" size="sm" onClick={() => onReply(message)} disabled={!canManage}>
                 <Reply className="mr-1 h-4 w-4" /> Reply
             </Button>

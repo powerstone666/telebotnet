@@ -51,7 +51,7 @@ export function useLocalStorageMessagesWithExpiry(
         const messageMap = new Map(validMessages.map(msg => [`${msg.chat.id}-${msg.message_id}-${msg.sourceTokenId || 'unknown'}`, msg]));
         const uniqueSortedMessages = Array.from(messageMap.values())
                                         .sort((a, b) => (b.date || 0) - (a.date || 0))
-                                        .slice(0, 200); 
+                                        .slice(0, 1000); 
         setStoredValue(uniqueSortedMessages);
       } else {
         setStoredValue(initialValue.map(enrichSingleMessageWithRef)); 
@@ -80,7 +80,7 @@ export function useLocalStorageMessagesWithExpiry(
       
       const uniqueSortedMessages = Array.from(messageMap.values())
                                       .sort((a, b) => (b.date || 0) - (a.date || 0))
-                                      .slice(0, 200);
+                                      .slice(0, 1000);
 
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);

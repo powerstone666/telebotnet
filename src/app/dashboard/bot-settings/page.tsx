@@ -25,6 +25,7 @@ import { Loader2, ListChecks, Settings, Trash2, RefreshCw, Search, InfoIcon } fr
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Input } from "@/components/ui/input"; // Added Input
+import { Reply } from "lucide-react"; // Import Reply icon
 
 
 const botCommandsFormSchema = z.object({

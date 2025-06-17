@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { TelegramMessage, TelegramUpdate, StoredToken } from '@/lib/types'; // Added TelegramUpdate
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import type { TelegramMessage, TelegramUpdate } from '@/lib/types';
+import { CardDescription } from '@/components/ui/card'; // Ensure all Card components are imported
+// import { ScrollArea } from '@/components/ui/scroll-area'; // No longer using ScrollArea directly here
 import { MessageCard } from '@/components/messages/MessageCard';
 import { ReplyModal } from '@/components/messages/ReplyModal';
-// import { EditMessageModal } from '@/components/messages/EditMessageModal'; // Edit button removed
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useStoredTokens } from '@/lib/localStorage';
 import { downloadFileAction, deleteMessageAction } from './actions';
 import { saveAs } from 'file-saver'; 
-import { Loader2, Filter, Trash2, Search } from 'lucide-react'; // Added Trash2, Search
+import { Loader2, Filter, Trash2, Search } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -31,11 +30,14 @@ import {
   DropdownMenuCheckboxItem
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"; // Added Input
-import { useLocalStorageMessagesWithExpiry } from '@/hooks/useLocalStorageMessagesWithExpiry'; // Import the new hook
+import { Input } from "@/components/ui/input";
+import { useLocalStorageMessagesWithExpiry } from '@/hooks/useLocalStorageMessagesWithExpiry';
+import { FixedSizeList as List, ListChildComponentProps } from 'react-window'; // Import react-window
+import AutoSizer from 'react-virtualized-auto-sizer'; // Import AutoSizer
 
-const MESSAGE_EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000; // 1 day
-const initialMessagesForHook: TelegramMessage[] = []; // Define stable initial value
+const MESSAGE_EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000;
+const initialMessagesForHook: TelegramMessage[] = [];
+const ESTIMATED_MESSAGE_HEIGHT = 200; // Adjust as needed, this is an estimate
 
 export default function MessageLogPage() {
   const { tokens } = useStoredTokens(); 
@@ -255,6 +257,24 @@ export default function MessageLogPage() {
     return filtered;
   }, [messages, filterTokenIds, searchTerm]);
 
+  // Row component for react-window
+  const MessageRow = useCallback(({ index, style }: ListChildComponentProps) => {
+    const message = displayedMessages[index];
+    if (!message) return null;
+    return (
+      <div style={style} className="px-1 py-1"> {/* Add some padding around each card if needed */}
+        <MessageCard
+          key={`${message.chat.id}-${message.message_id}-${message.sourceTokenId || 'unknown'}`}
+          message={message} 
+          onReply={handleReply}
+          onDelete={handleDeleteInitiate}
+          onDownloadFile={handleDownloadFile}
+          isBotMessage={message.from?.is_bot || !!message.botUsername}
+        />
+      </div>
+    );
+  }, [displayedMessages, handleReply, handleDeleteInitiate, handleDownloadFile]);
+
   if (!hasMounted || isLoadingMessages) { // Show loader if not mounted or messages are loading
     return (
       <div className="flex items-center justify-center" style={{minHeight: 'calc(100vh - 150px)'}}> 
@@ -323,30 +343,33 @@ export default function MessageLogPage() {
           />
         </div>
         <CardDescription>
-          Displaying {displayedMessages.length} of {messages.length} messages (max 200, older than 1 day are auto-removed).
+          Displaying {displayedMessages.length} of {messages.length} messages (max 1000, older than 1 day are auto-removed).
         </CardDescription>
       </div>
-      <ScrollArea className="h-[calc(100vh-300px)] w-full rounded-md border p-4 bg-muted/30">
-        {displayedMessages.length === 0 && (
+      {/* Replace ScrollArea with react-window List */}
+      <div className="h-[calc(100vh-300px)] w-full rounded-md border bg-muted/30 overflow-hidden">
+        {displayedMessages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-muted-foreground">
               {messages.length > 0 ? 'No messages match your current filter.' : 'No messages received yet. Ensure your webhook is set up.'}
             </p>
           </div>
+        ) : (
+          <AutoSizer>
+            {({ height, width }) => (
+              <List
+                height={height}
+                itemCount={displayedMessages.length}
+                itemSize={ESTIMATED_MESSAGE_HEIGHT} // Adjust this based on your average MessageCard height
+                width={width}
+                itemData={displayedMessages} // Pass data to children if needed, though direct access in MessageRow is fine
+              >
+                {MessageRow}
+              </List>
+            )}
+          </AutoSizer>
         )}
-        <div className="space-y-4">
-          {displayedMessages.map((message) => (
-            <MessageCard
-              key={`${message.chat.id}-${message.message_id}-${message.sourceTokenId || 'unknown'}`}
-              message={message} 
-              onReply={handleReply}
-              onDelete={handleDeleteInitiate}
-              onDownloadFile={handleDownloadFile}
-              isBotMessage={message.from?.is_bot || !!message.botUsername} // A message is a bot message if API says so or we know it came via one of our bots
-            />
-          ))}
-        </div>
-      </ScrollArea>
+      </div>
 
       {replyingToMessage && (
         <ReplyModal
