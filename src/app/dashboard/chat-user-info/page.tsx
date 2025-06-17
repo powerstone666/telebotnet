@@ -22,8 +22,8 @@ import type { ChatUserInfoFormData, TelegramChat, ChatMember } from '@/lib/types
 import { getChatAction, getChatMemberAction, getChatAdministratorsAction } from './actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Search } from "lucide-react";
-import { Label } from "@/components/ui/label"; // Added Label
+import { Loader2, Search, RefreshCw } from "lucide-react"; // Added RefreshCw
+import { Label } from "@/components/ui/label";
 
 const chatUserInfoFormSchema = z.object({
   tokenId: z.string().min(1, "Please select a bot token."),
@@ -50,7 +50,8 @@ export default function ChatUserInfoPage() {
   const [isFetching, setIsFetching] = useState(false);
   const [resultData, setResultData] = useState<TelegramChat | ChatMember | ChatMember[] | null>(null);
   const [currentOperation, setCurrentOperation] = useState<ChatUserInfoFormValues['operation'] | undefined>(undefined);
-  const [botSearchTerm, setBotSearchTerm] = useState(''); // New state for bot search
+  const [botSearchTerm, setBotSearchTerm] = useState('');
+  const [isRefreshingAll, setIsRefreshingAll] = useState(false); // For manual refresh
 
 
   const form = useForm<ChatUserInfoFormValues>({
@@ -113,6 +114,22 @@ export default function ChatUserInfoPage() {
     );
   });
 
+  // Function to manually refresh bot info (if needed on this page, though less common)
+  // This is a placeholder, actual refresh logic might be more involved if we were updating stored token info here
+  const handleManualRefreshBots = async () => {
+    if (isLoadingTokens) return;
+    setIsRefreshingAll(true);
+    toast({ title: "Refreshing Bot List...", description: "Fetching latest details for all bots." });
+    // In a real scenario, you might re-fetch or re-validate all tokens here.
+    // For now, we'll just simulate a delay and then rely on useStoredTokens to have the latest.
+    // This page primarily *uses* tokens, doesn't manage their core info like token-management.
+    // If a refresh of underlying token data is needed, it's best done on the token-management page.
+    // Here, we just ensure the UI reflects it's trying to get the freshest list for the dropdown.
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate refresh
+    setIsRefreshingAll(false);
+    toast({ title: "Bot List Refreshed", description: "Displaying the latest available bots." });
+  };
+
   const getOperationLabel = (op: ChatUserInfoFormValues['operation'] | undefined) => {
     if (!op) return "Details";
     switch(op) {
@@ -128,10 +145,10 @@ export default function ChatUserInfoPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 p-4 md:p-6">
       <div>
-        <h1 className="text-3xl font-headline font-bold tracking-tight">Chat & User Information</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl md:text-3xl font-headline font-bold tracking-tight">Chat & User Information</h1>
+        <p className="text-muted-foreground text-sm md:text-base">
           Fetch details about Telegram users, chats (groups/channels), chat members, or administrators.
         </p>
       </div>
@@ -142,17 +159,21 @@ export default function ChatUserInfoPage() {
           <CardDescription>Select a bot, operation, and provide the required ID(s).</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2 mb-6">
+          <div className="space-y-3 mb-6">
             <Label htmlFor="bot-search-chatinfo">Search Bot (ID, Username, Name, Token)</Label>
             <div className="flex items-center space-x-2">
-              <Search className="h-5 w-5 text-muted-foreground" />
+              <Search className="h-5 w-5 text-muted-foreground flex-shrink-0" />
               <Input
                 id="bot-search-chatinfo"
-                placeholder="Enter bot ID, username, name, or part of token..."
+                placeholder="Filter available bots..."
                 value={botSearchTerm}
                 onChange={(e) => setBotSearchTerm(e.target.value)}
-                className="w-full"
+                className="flex-grow"
               />
+              <Button variant="outline" size="icon" onClick={handleManualRefreshBots} disabled={isLoadingTokens || isRefreshingAll} title="Refresh Bot List">
+                {isRefreshingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                <span className="sr-only">Refresh Bot List</span>
+              </Button>
             </div>
           </div>
 

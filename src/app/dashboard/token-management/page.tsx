@@ -11,15 +11,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Loader2, Search } from 'lucide-react'; // Added Search
+import { Loader2, Search, RefreshCw } from 'lucide-react'; // Added RefreshCw
+import { Button } from '@/components/ui/button'; // Added Button
 
 export default function TokenManagementPage() {
-  const { tokens, addToken, removeToken, updateToken, isLoading: isLoadingTokens } = useStoredTokens();
+  const { tokens, addToken, updateToken, isLoading: isLoadingTokens, refreshAllTokens } = useStoredTokens(); // Added refreshAllTokens
   const { toast } = useToast();
   const [isLoadingTokenMap, setIsLoadingTokenMap] = useState<Record<string, boolean>>({});
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(60); // Default 60 seconds
-  const [botSearchTerm, setBotSearchTerm] = useState(""); // New state for bot search
+  const [botSearchTerm, setBotSearchTerm] = useState("");
+  const [isManuallyRefreshing, setIsManuallyRefreshing] = useState(false);
 
   const handleTokenAdded = (newToken: StoredToken) => {
     addToken(newToken);
@@ -120,8 +122,26 @@ export default function TokenManagementPage() {
     );
   });
 
+  const handleManualRefreshAllTokens = async () => {
+    if (isLoadingTokens || isManuallyRefreshing) return;
+    setIsManuallyRefreshing(true);
+    toast({ title: "Refreshing All Tokens...", description: "Fetching latest bot info and webhook status for all tokens." });
+    
+    // Option 1: Use a function from useStoredTokens if it handles individual refreshes and state updates
+    // await refreshAllTokens(); // Assuming refreshAllTokens is implemented in useStoredTokens to do this
+
+    // Option 2: Iterate and call refreshSingleTokenInfo if refreshAllTokens is not available or suitable
+    // This provides more granular feedback via isLoadingTokenMap if desired.
+    const refreshPromises = tokens.map(token => refreshSingleTokenInfo(token, true)); // true to suppress individual toasts
+    await Promise.all(refreshPromises);
+
+    setIsManuallyRefreshing(false);
+    toast({ title: "All Tokens Refreshed", description: "Successfully updated information for all tokens." });
+  };
+
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 p-4 md:p-6">
       <div>
         <h1 className="text-3xl font-headline font-bold tracking-tight">Token Management</h1>
         <p className="text-muted-foreground">
@@ -137,15 +157,21 @@ export default function TokenManagementPage() {
           <CardDescription>View and manage your added bot tokens. Search by Bot Username, Token ID, or part of the token itself.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Search className="h-5 w-5 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search your bots (username, ID, token part)..."
-              value={botSearchTerm}
-              onChange={(e) => setBotSearchTerm(e.target.value)}
-              className="w-full sm:w-1/2 md:w-1/3"
-            />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+            <div className="flex-grow flex items-center gap-2 w-full sm:w-auto">
+              <Search className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              <Input
+                type="search"
+                placeholder="Search bots (username, ID, token)..."
+                value={botSearchTerm}
+                onChange={(e) => setBotSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <Button variant="outline" size="icon" onClick={handleManualRefreshAllTokens} disabled={isLoadingTokens || isManuallyRefreshing} title="Refresh All Tokens">
+              {isManuallyRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <span className="sr-only">Refresh All Tokens</span>
+            </Button>
           </div>
           {isLoadingTokens ? (
             <div className="flex items-center justify-center py-10">
@@ -170,7 +196,10 @@ export default function TokenManagementPage() {
       <Card>
         <CardHeader>
           <CardTitle>Auto-Refresh Settings</CardTitle>
-          <CardDescription>Automatically refresh bot information and webhook status for all tokens.</CardDescription>
+          <CardDescription>
+            Automatically refresh bot information and webhook status. 
+            <span className="block sm:inline mt-1 sm:mt-0">The manual refresh button above provides immediate updates.</span>
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-2">
