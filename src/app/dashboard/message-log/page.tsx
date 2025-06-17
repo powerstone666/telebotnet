@@ -335,22 +335,23 @@ export default function MessageLogPage() {
   }; 
 
   return (
-    <div className="flex flex-col h-full p-4 md:p-6 lg:p-8 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2">
+    <div className="flex flex-col h-full p-2 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6"> {/* Adjusted padding and spacing for mobile */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-2"> {/* Adjusted gap for mobile */}
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center">
-            <Search className="mr-2 h-6 w-6 md:h-7 md:w-7" /> Message Log & Inspector
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center">
+            <Search className="mr-2 h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7" /> {/* Adjusted icon size */}
+            Message Log
           </h1>
-          <CardDescription className="mt-1 md:mt-1.5">
-            View, search, and interact with messages from your bots.
+          <CardDescription className="mt-1 text-xs sm:text-sm md:mt-1.5">
+            View & interact with bot messages.
           </CardDescription>
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 self-start sm:self-center">
+        <div className="flex flex-row items-center gap-2 self-start sm:self-center"> {/* Ensure horizontal layout on mobile for buttons */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                <Filter className="mr-2 h-4 w-4" />
-                Filter by Bot ({filterTokenIds.length === 0 ? 'All' : filterTokenIds.length})
+              <Button variant="outline" size="sm"> {/* Adjusted button size */}
+                <Filter className="mr-1.5 h-3.5 w-3.5" /> {/* Adjusted icon size and margin */}
+                Filter ({filterTokenIds.length === 0 ? 'All' : filterTokenIds.length})
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-64 max-h-80 overflow-y-auto">
@@ -377,22 +378,22 @@ export default function MessageLogPage() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" size="icon" onClick={() => setIsClearAllConfirmOpen(true)} disabled={messages.length === 0}>
+          <Button variant="outline" size="icon-sm" onClick={() => setIsClearAllConfirmOpen(true)} disabled={messages.length === 0}> {/* Custom size or adjust padding if needed */}
             <Trash2 className="h-4 w-4" />
             <span className="sr-only">Clear Messages</span>
           </Button>
         </div>
       </div>
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4"> {/* Adjusted margin */}
         <Input 
           type="search"
-          placeholder="Search messages (text, user, bot...). Press Enter to search."
+          placeholder="Search messages..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full"
+          className="w-full text-sm sm:text-base" /* Adjusted text size */
         />
       </div>
-      <CardDescription>
+      <CardDescription className="text-xs sm:text-sm">
         Displaying {displayedMessages.length} of {messages.length} messages (max 1000, older than 1 day are auto-removed).
       </CardDescription>
       {/* Virtualized List Container - ensure it takes up available space */}
