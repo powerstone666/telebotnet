@@ -27,6 +27,7 @@ const navItemsData = [
   { href: '/dashboard/webhook-operations', label: 'Webhook Operations', icon: Cable },
   { href: '/dashboard/get-updates', label: 'Get Updates', icon: Activity },
   { href: '/dashboard/message-log', label: 'Message Log', icon: MessageSquareText },
+  { href: '/dashboard/bot-messages', label: 'Bot Messages', icon: Send }, // Added new nav item for Bot Messages
   { href: '/dashboard/users', label: 'Users', icon: Users },
   { href: '/dashboard/groups', label: 'Groups', icon: Group },
   { href: '/dashboard/send-message', label: 'Send Message/Media', icon: Send },
