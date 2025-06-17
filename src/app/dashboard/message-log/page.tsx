@@ -290,96 +290,85 @@ export default function MessageLogPage() {
   // Let's adjust MessageRow's dependencies to include the handlers explicitly if they are stable.
   // For this specific case, since the handlers themselves don't depend on a changing scope that MessageRow also depends on, 
   // it's often fine. The issue was the conditional rendering of MessageRow's definition itself.
-  // The previous MessageRow definition was fine with its dependencies, the problem was its conditional call.
   // The current definition of MessageRow and its dependencies [displayedMessages] is okay, 
   // as the handlers (handleReply etc.) are stable references from the component scope.
 
   return (
-    <div className="space-y-8">
-      <div>
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-          <div>
-            <h1 className="text-3xl font-headline font-bold tracking-tight">Message Log</h1>
-            <p className="text-muted-foreground">
-              Live feed of messages from your Telegram bots (messages stored for 1 day).
-            </p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 items-center">
-            {tokens.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Filter className="mr-2 h-4 w-4" />
-                    Filter by Bot ({filterTokenIds.length === 0 ? 'All' : filterTokenIds.length})
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64 max-h-80 overflow-y-auto">
-                  <DropdownMenuLabel>Show messages from:</DropdownMenuLabel>
+    <div className="flex flex-col h-full p-4 md:p-6 lg:p-8 space-y-6"> {/* Increased padding and space-y */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2"> {/* Reduced mb slightly as space-y on parent handles overall spacing */}
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center">
+            <Search className="mr-2 h-6 w-6 md:h-7 md:w-7" /> Message Log & Inspector
+          </h1>
+          <CardDescription className="mt-1 md:mt-1.5">
+            View, search, and interact with messages from your bots.
+          </CardDescription>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 self-start sm:self-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Filter className="mr-2 h-4 w-4" />
+                Filter by Bot ({filterTokenIds.length === 0 ? 'All' : filterTokenIds.length})
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-64 max-h-80 overflow-y-auto">
+              <DropdownMenuLabel>Show messages from:</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {tokens.map(token => (
+                <DropdownMenuCheckboxItem
+                  key={token.id}
+                  checked={filterTokenIds.includes(token.id)}
+                  onCheckedChange={(checked) => {
+                    setFilterTokenIds(prev =>
+                      checked ? [...prev, token.id] : prev.filter(id => id !== token.id)
+                    );
+                  }}
+                >
+                  {token.botInfo?.username || token.id}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {filterTokenIds.length > 0 && (
+                <>
                   <DropdownMenuSeparator />
-                  {tokens.map(token => (
-                    <DropdownMenuCheckboxItem
-                      key={token.id}
-                      checked={filterTokenIds.includes(token.id)}
-                      onCheckedChange={(checked) => {
-                        setFilterTokenIds(prev =>
-                          checked ? [...prev, token.id] : prev.filter(id => id !== token.id)
-                        );
-                      }}
-                    >
-                      {token.botInfo?.username || token.id}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  {filterTokenIds.length > 0 && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => setFilterTokenIds([])}>Clear Filters</Button>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <Button variant="outline" size="icon" onClick={() => setIsClearAllConfirmOpen(true)} disabled={messages.length === 0}>
-              <Trash2 className="h-4 w-4" />
-              <span className="sr-only">Clear Messages</span>
-            </Button>
-          </div>
+                  <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => setFilterTokenIds([])}>Clear Filters</Button>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="outline" size="icon" onClick={() => setIsClearAllConfirmOpen(true)} disabled={messages.length === 0}>
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Clear Messages</span>
+          </Button>
         </div>
-        <div className="mb-4">
-          <Input 
-            type="search"
-            placeholder="Search messages (text, user, bot...). Press Enter to search."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full"
-          />
-        </div>
-        <CardDescription>
-          Displaying {displayedMessages.length} of {messages.length} messages (max 1000, older than 1 day are auto-removed).
-        </CardDescription>
       </div>
-      {/* Replace ScrollArea with react-window List */}
-      <div className="h-[calc(100vh-300px)] w-full rounded-md border bg-muted/30 overflow-hidden">
-        {displayedMessages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-muted-foreground">
-              {messages.length > 0 ? 'No messages match your current filter.' : 'No messages received yet. Ensure your webhook is set up.'}
-            </p>
-          </div>
-        ) : (
-          <AutoSizer>
-            {({ height, width }) => (
-              <List
-                height={height}
-                itemCount={displayedMessages.length}
-                itemSize={ESTIMATED_MESSAGE_HEIGHT} // Adjust this based on your average MessageCard height
-                width={width}
-                itemData={displayedMessages} // Pass data to children if needed, though direct access in MessageRow is fine
-              >
-                {MessageRow}
-              </List>
-            )}
-          </AutoSizer>
-        )}
+      <div className="mb-4">
+        <Input 
+          type="search"
+          placeholder="Search messages (text, user, bot...). Press Enter to search."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full"
+        />
+      </div>
+      <CardDescription>
+        Displaying {displayedMessages.length} of {messages.length} messages (max 1000, older than 1 day are auto-removed).
+      </CardDescription>
+      {/* Virtualized List Container - ensure it takes up available space */}
+      <div className="flex-grow min-h-0"> {/* Added flex-grow and min-h-0 for AutoSizer */}
+        <AutoSizer>
+          {({ height, width }) => (
+            <List
+              className="message-list-container" // Added a class for potential global styling
+              height={height}
+              itemCount={displayedMessages.length}
+              itemSize={ESTIMATED_MESSAGE_HEIGHT} // Adjust as needed, or make dynamic
+              width={width}
+            >
+              {MessageRow}
+            </List>
+          )}
+        </AutoSizer>
       </div>
 
       {replyingToMessage && (
