@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react'; // Added useRef
 import type { TelegramMessage, StoredToken } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -27,7 +26,9 @@ import { Loader2 } from 'lucide-react';
 
 function useSessionStorageMessages(key: string, initialValue: TelegramMessage[]) {
   const [storedValue, setStoredValue] = useState<TelegramMessage[]>(initialValue);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Effect for initial load from sessionStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -37,7 +38,7 @@ function useSessionStorageMessages(key: string, initialValue: TelegramMessage[])
           if (Array.isArray(parsedItems)) {
             setStoredValue(parsedItems.sort((a, b) => b.date - a.date));
           } else {
-             setStoredValue(initialValue);
+            setStoredValue(initialValue);
           }
         } else {
           setStoredValue(initialValue);
@@ -47,28 +48,56 @@ function useSessionStorageMessages(key: string, initialValue: TelegramMessage[])
         setStoredValue(initialValue);
       }
     }
-  }, [key, initialValue]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]); // initialValue is stable, so key is the main dependency for re-running this if needed.
 
-  const setValue = (value: TelegramMessage[] | ((val: TelegramMessage[]) => TelegramMessage[])) => {
+  // Function to update React state (this will be returned and used as setMessages)
+  const updateReactStateAndPrepareForStorage = useCallback((value: TelegramMessage[] | ((val: TelegramMessage[]) => TelegramMessage[])) => {
     try {
       const valueToStoreCallback = typeof value === 'function' ? value : () => value;
       setStoredValue(currentStoredValue => {
         const newUnsortedMessages = valueToStoreCallback(currentStoredValue);
-        const messageMap = new Map(newUnsortedMessages.map(msg => [`${msg.chat.id}-${msg.message_id}`, msg]));
+        // Ensure message_id and chat.id exist before creating map keys
+        const validMessages = newUnsortedMessages.filter(msg => msg && typeof msg.message_id !== 'undefined' && msg.chat && typeof msg.chat.id !== 'undefined');
+        const messageMap = new Map(validMessages.map(msg => [`${msg.chat.id}-${msg.message_id}`, msg]));
+        
         const uniqueSortedMessages = Array.from(messageMap.values())
                                         .sort((a, b) => b.date - a.date)
                                         .slice(0, 200);
-        
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.setItem(key, JSON.stringify(uniqueSortedMessages));
-        }
         return uniqueSortedMessages;
       });
     } catch (error) {
-      console.error(`Error setting ${key} in sessionStorage:`, error);
+      console.error(`Error updating React state for ${key}:`, error);
     }
-  };
-  return [storedValue, setValue] as const;
+  }, [key]);
+
+  // Effect for debounced writing to sessionStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      try {
+        // console.log(`Debounced: Writing ${storedValue.length} messages to sessionStorage for key ${key}`);
+        window.sessionStorage.setItem(key, JSON.stringify(storedValue));
+      } catch (error) {
+        console.error(`Error debounced setting ${key} in sessionStorage:`, error);
+      }
+    }, 500); // 500ms debounce
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [key, storedValue]); // Re-run when storedValue or key changes
+
+  return [storedValue, updateReactStateAndPrepareForStorage] as const;
 }
 
 
@@ -97,8 +126,13 @@ export default function MessageLogPage() {
   }, [tokens]);
 
   const addNewMessage = useCallback((newMessage: TelegramMessage) => {
+    if (!newMessage || typeof newMessage.message_id === 'undefined' || !newMessage.chat || typeof newMessage.chat.id === 'undefined') {
+      console.warn("SSE: Received incomplete message, skipping:", newMessage);
+      return;
+    }
     const enrichedNewMessage = enrichMessageWithBotInfo(newMessage);
     setMessages(prevMessages => {
+      // Add the new message and let the hook handle deduplication and sorting
       return [enrichedNewMessage, ...prevMessages]; 
     });
     toast({ 
@@ -107,7 +141,61 @@ export default function MessageLogPage() {
     });
   }, [setMessages, toast, enrichMessageWithBotInfo]);
 
+  useEffect(() => {
+    if (!hasMounted) return;
 
+    const clientId = `client-${Math.random().toString(36).substring(2, 15)}`;
+    const eventSource = new EventSource(`/api/sse?clientId=${clientId}`);
+
+    eventSource.onopen = () => {
+      console.log(`SSE Connection opened with client ID: ${clientId}`);
+    };
+
+    eventSource.onmessage = (event) => {
+      try {
+        const eventData = JSON.parse(event.data);
+        if (eventData.type === 'NEW_MESSAGE') {
+          const { message: rawNewMessage, tokenId } = eventData.payload;
+          
+          // Ensure the message has sourceTokenId, even if it was set by webhook handler
+          // And ensure it's a valid message structure
+          if (rawNewMessage && typeof rawNewMessage.message_id !== 'undefined' && rawNewMessage.chat && typeof rawNewMessage.chat.id !== 'undefined') {
+            const newMessageWithTokenId = { ...rawNewMessage };
+            if (!newMessageWithTokenId.sourceTokenId && tokenId) {
+              newMessageWithTokenId.sourceTokenId = tokenId;
+            }
+            // console.log('SSE: Received NEW_MESSAGE', newMessageWithTokenId);
+            addNewMessage(newMessageWithTokenId as TelegramMessage);
+          } else {
+            console.warn("SSE: Received NEW_MESSAGE with invalid structure, skipping:", rawNewMessage);
+          }
+        } else if (eventData.type === 'HEARTBEAT') {
+          // console.log('SSE: Received HEARTBEAT');
+        } else {
+          // console.log('SSE: Received other event data', eventData);
+        }
+      } catch (e) {
+        console.error("SSE: Error parsing message from event data", e, event.data);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('SSE: EventSource failed:', error);
+      // Optional: Implement reconnection logic or inform user
+      // eventSource.close(); // Close on error to prevent constant retries by browser if server is down
+    };
+
+    // Cleanup: Remove the old localStorage listener
+    // window.removeEventListener('storage', handleStorageChange);
+
+    return () => {
+      console.log(`SSE Connection closing for client ID: ${clientId}`);
+      eventSource.close();
+    };
+  }, [hasMounted, addNewMessage]); // Removed enrichMessageWithBotInfo and setMessages as they are part of addNewMessage closure
+
+  // REMOVE or COMMENT OUT the old handleStorageChange listener as SSE is now primary
+  /*
   useEffect(() => {
     if (!hasMounted) return;
 
@@ -136,7 +224,7 @@ export default function MessageLogPage() {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [hasMounted, addNewMessage, setMessages, enrichMessageWithBotInfo]);
-
+  */
 
   const handleReply = (message: TelegramMessage) => {
     setReplyingToMessage(message);

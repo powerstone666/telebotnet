@@ -1,5 +1,6 @@
 import type { NextRequest, NextResponse } from 'next/server';
 import type { TelegramUpdate, TelegramMessage } from '@/lib/types';
+import { broadcastMessage } from '@/lib/sse-hub';
 
 // This is a very basic implementation.
 // In a real app, you'd want to:
@@ -11,47 +12,47 @@ import type { TelegramUpdate, TelegramMessage } from '@/lib/types';
 export async function POST(request: NextRequest) {
   try {
     const update = (await request.json()) as TelegramUpdate;
-    const botToken = request.nextUrl.pathname.split('/').pop(); // Assuming token is part of path e.g. /api/webhook/<TOKEN>
-                                                               // Or extract from query param or header if set up that way.
-                                                               // For now, let's assume it's not directly available here easily without setup.
-                                                               // The message will need to be associated with a token ID on client-side.
+    const urlParts = request.nextUrl.pathname.split('/');
+    const tokenId = urlParts[urlParts.length - 1]; // Assuming URL is /api/webhook/[tokenId]
+
+    if (!tokenId || tokenId === 'webhook') {
+        console.error('Error processing webhook: Token ID not found in URL path.', request.nextUrl.pathname);
+        return new Response(JSON.stringify({ success: false, error: 'Token ID missing from webhook URL' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
 
     let messageToStore: TelegramMessage | undefined = undefined;
 
     if (update.message) {
       messageToStore = update.message;
     } else if (update.edited_message) {
-      messageToStore = update.edited_message; // Or handle edits differently
+      messageToStore = update.edited_message;
     } else if (update.channel_post) {
       messageToStore = update.channel_post;
     } else if (update.edited_channel_post) {
       messageToStore = update.edited_channel_post;
     }
-    // ... handle other update types
 
     if (messageToStore) {
-      // This mechanism for notifying the client is VERY basic (localStorage event).
-      // A production app should use WebSockets, Server-Sent Events, or a robust message queue + client polling.
-      // Or BroadcastChannel API if client tabs are open.
-      // The key 'telematrix_new_webhook_message' will be listened to by the MessageLogPage.
-      // We can't directly use localStorage from server components/routes.
-      // This notification part needs a client-side mechanism to pick up or a push from server.
-      // For now, this route just logs and returns OK. The client won't get live updates from this directly.
-      // The MessageLogPage uses localStorage as a HACK to simulate this.
-      // A better approach for local dev might be: client polls an endpoint, or this posts to a temp store client reads.
+      // Attach the tokenId to the message
+      (messageToStore as TelegramMessage).sourceTokenId = tokenId;
 
-      // The challenge is communicating this server-side event to an active client tab.
-      // This route only acknowledges receipt to Telegram.
-      console.log("Received webhook update, message:", messageToStore);
-
-      // TODO: How to link this message back to a specific StoredToken.id?
-      // This requires the webhook URL to contain an identifier, or matching based on bot within message (if via_bot is set).
-      // For now, we'll rely on client-side to perhaps know which token's webhook this is (if only one is set this way).
-      // Or if the webhook URL is unique per token: /api/webhook/[tokenId]
+      console.log(`Received webhook update for token ID: ${tokenId}, preparing to broadcast.`);
+      
+      // Broadcast the new message to all connected SSE clients
+      broadcastMessage({
+        type: 'NEW_MESSAGE',
+        payload: {
+          tokenId: tokenId,
+          message: messageToStore,
+        }
+      });
+      console.log(`Broadcast initiated for message from token ID: ${tokenId}`);
     }
 
-
-    return new Response(JSON.stringify({ success: true, message: "Update received" }), {
+    return new Response(JSON.stringify({ success: true, message: "Update received and broadcast initiated" }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -67,7 +68,16 @@ export async function POST(request: NextRequest) {
 
 // Telegram may send a GET request to verify the endpoint.
 export async function GET(request: NextRequest) {
-    return new Response(JSON.stringify({ success: true, message: "Webhook endpoint is active." }), {
+    const urlParts = request.nextUrl.pathname.split('/');
+    const tokenId = urlParts[urlParts.length - 1]; // Assuming URL is /api/webhook/[tokenId]
+
+    if (!tokenId || tokenId === 'webhook') {
+        // This could be a general ping to /api/webhook, or an invalid one
+        // For now, let's assume a general ping is okay, but log if no tokenId
+        console.log("GET request to webhook endpoint without specific token ID.");
+    }
+
+    return new Response(JSON.stringify({ success: true, message: `Webhook endpoint for token ${tokenId || 'general'} is active.` }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
     });

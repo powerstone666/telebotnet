@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -11,22 +10,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { setWebhookAction, deleteWebhookAction } from './actions';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, Info } from 'lucide-react';
 
 export default function WebhookOperationsPage() {
   const { tokens, isLoading: isLoadingTokens, updateToken } = useStoredTokens();
   const { toast } = useToast();
   const [selectedTokenIds, setSelectedTokenIds] = useState<string[]>([]);
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
   const [webhookBaseUrl, setWebhookBaseUrl] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const currentBaseUrl = `${window.location.protocol}//${window.location.host}`;
       setWebhookBaseUrl(currentBaseUrl);
-      setWebhookUrl(`${currentBaseUrl}/api/webhook`);
     }
     setHasMounted(true);
   }, []);
@@ -50,29 +47,35 @@ export default function WebhookOperationsPage() {
       toast({ title: "No Tokens Selected", description: "Please select at least one token.", variant: "destructive" });
       return;
     }
-    if (!webhookUrl.startsWith('https://')) {
-      toast({ title: "Invalid Webhook URL", description: "Webhook URL must start with https://.", variant: "destructive" });
-      return;
+    if (!webhookBaseUrl.startsWith("https://")) {
+        toast({ 
+            title: "HTTPS Required", 
+            description: "Your application must be served over HTTPS for webhooks to work. Please ensure your deployment uses HTTPS.", 
+            variant: "destructive",
+            duration: 7000 
+        });
+        return;
     }
 
     setIsProcessing(true);
     const selectedTokens = getTokensByIds(selectedTokenIds);
     const results = await Promise.all(
       selectedTokens.map(async (token) => {
-        const result = await setWebhookAction(token.token, webhookUrl);
+        const individualWebhookUrl = `${webhookBaseUrl}/api/webhook/${token.id}`; // Use token.id for unique URL
+        const result = await setWebhookAction(token.token, individualWebhookUrl);
         if (result.success) {
-          updateToken(token.id, { webhookStatus: 'set', lastWebhookSetAttempt: new Date().toISOString(), isCurrentWebhook: webhookUrl === `${webhookBaseUrl}/api/webhook` });
+          updateToken(token.id, { webhookStatus: 'set', lastWebhookSetAttempt: new Date().toISOString(), isCurrentWebhook: true }); // Assume true if set to our unique URL
         } else {
           updateToken(token.id, { webhookStatus: 'failed', lastWebhookSetAttempt: new Date().toISOString() });
         }
-        return { botName: token.botInfo?.username || token.id, ...result };
+        return { botName: token.botInfo?.username || token.id, ...result, setUrl: individualWebhookUrl };
       })
     );
     setIsProcessing(false);
 
     results.forEach(res => {
       if (res.success) {
-        toast({ title: `Webhook Set for ${res.botName}`, description: `Successfully set webhook to ${webhookUrl}.` });
+        toast({ title: `Webhook Set for ${res.botName}`, description: `Successfully set webhook to ${res.setUrl}.` });
       } else {
         toast({ title: `Failed to Set Webhook for ${res.botName}`, description: res.error, variant: "destructive" });
       }
@@ -123,7 +126,7 @@ export default function WebhookOperationsPage() {
       <div>
         <h1 className="text-3xl font-headline font-bold tracking-tight">Webhook Operations</h1>
         <p className="text-muted-foreground">
-          Set or delete webhooks for your selected Telegram bots.
+          Set or delete webhooks for your selected Telegram bots. Your application must be publicly accessible via HTTPS.
         </p>
       </div>
 
@@ -169,26 +172,34 @@ export default function WebhookOperationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Webhook URL</CardTitle>
-          <CardDescription>
-            Enter the URL for Telegram to send updates to. This is typically your application's <code>/api/webhook</code> endpoint.
+          <CardTitle>Webhook URL Configuration</CardTitle>
+          <CardDescription className="space-y-1">
+            <p>
+              The webhook URL will be automatically constructed for each selected bot using the format:
+              <code className="block bg-muted p-1 rounded my-1 text-sm">{webhookBaseUrl}/api/webhook/[BOT_ID]</code>
+            </p>
+            <p className="flex items-start">
+              <Info className="h-4 w-4 mr-1.5 mt-0.5 text-blue-500 flex-shrink-0" />
+              <span>Your application must be publicly accessible and served over HTTPS for Telegram webhooks to function correctly.</span>
+            </p>
           </CardDescription>
         </CardHeader>
         <CardContent>
           {hasMounted ? (
             <>
               <Input
-                type="url"
-                placeholder="https://your-app-domain.com/api/webhook"
-                value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)}
-                disabled={isProcessing}
+                type="text"
+                aria-label="Webhook Base URL"
+                placeholder="Base URL will be auto-detected (e.g., https://your-app-domain.com)"
+                value={webhookBaseUrl} // Display detected base URL
+                readOnly // Make it read-only as it's auto-detected
+                className="bg-muted/50"
               />
-              {!webhookUrl.startsWith('https://') && webhookUrl.length > 0 && (
-                 <p className="text-sm text-destructive mt-2 flex items-center"><AlertTriangle className="h-4 w-4 mr-1" /> Webhook URL must use HTTPS.</p>
+              {!webhookBaseUrl.startsWith('https://') && webhookBaseUrl.length > 0 && (
+                 <p className="text-sm text-destructive mt-2 flex items-center"><AlertTriangle className="h-4 w-4 mr-1" /> Your application must be served over HTTPS for webhooks to work. Telegram requires HTTPS for webhook URLs.</p>
               )}
                <p className="text-xs text-muted-foreground mt-1">
-                Your current app's webhook endpoint should be: <code>{webhookBaseUrl}/api/webhook</code>
+                Example for a bot: <code className="bg-muted p-0.5 rounded">{webhookBaseUrl}/api/webhook/123456789</code>
               </p>
             </>
           ) : (
@@ -201,7 +212,11 @@ export default function WebhookOperationsPage() {
       </Card>
 
       <div className="flex flex-col sm:flex-row gap-4">
-        <Button onClick={handleSetWebhooks} disabled={!hasMounted || isProcessing || selectedTokenIds.length === 0 || !webhookUrl} className="flex-1">
+        <Button 
+          onClick={handleSetWebhooks} 
+          disabled={!hasMounted || isProcessing || selectedTokenIds.length === 0 || !webhookBaseUrl} // Changed from !webhookUrl to !webhookBaseUrl
+          className="flex-1"
+        >
           {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Set Webhook ({selectedTokenIds.length})
         </Button>

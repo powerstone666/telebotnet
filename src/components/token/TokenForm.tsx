@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { StoredToken } from "@/lib/types";
 import { getBotInfoAction, checkWebhookAction } from "@/app/dashboard/token-management/actions";
 import { Loader2, PlusCircle } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const tokenFormSchema = z.object({
   token: z.string().min(20, { message: "Token must be at least 20 characters." })
@@ -39,14 +39,6 @@ export function TokenForm({ onTokenAdded, existingTokens }: TokenFormProps) {
     resolver: zodResolver(tokenFormSchema),
     defaultValues: { token: "" },
   });
-
-  useEffect(() => {
-    const storedTokens = localStorage.getItem("tokens");
-    if (storedTokens) {
-      const parsedTokens = JSON.parse(storedTokens);
-      parsedTokens.forEach((token: StoredToken) => onTokenAdded(token));
-    }
-  }, [onTokenAdded]);
 
   async function onSubmit(data: TokenFormValues) {
     setIsSubmitting(true);
@@ -85,16 +77,15 @@ export function TokenForm({ onTokenAdded, existingTokens }: TokenFormProps) {
 
 
     const newToken: StoredToken = {
-      id: botInfoResult.data.id.toString(),
+      id: botInfoResult.data.id.toString(), // Use bot ID as unique ID for the token entry
       token: data.token,
       botInfo: botInfoResult.data,
       webhookStatus: webhookStatus,
       isCurrentWebhook: isCurrentWebhook,
       lastActivity: new Date().toISOString(),
     };
-
+    
     onTokenAdded(newToken);
-    localStorage.setItem("tokens", JSON.stringify([...existingTokens, newToken]));
 
     toast({
       title: "Token Added",

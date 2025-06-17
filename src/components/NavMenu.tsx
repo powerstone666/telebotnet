@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from 'next/link';
@@ -23,7 +22,7 @@ import {
   SidebarGroupLabel,
 } from '@/components/ui/sidebar';
 
-const navItems = [
+const navItemsData = [
   { href: '/dashboard/token-management', label: 'Token Management', icon: KeyRound },
   { href: '/dashboard/webhook-operations', label: 'Webhook Operations', icon: Cable },
   { href: '/dashboard/get-updates', label: 'Get Updates', icon: Activity },
@@ -31,9 +30,15 @@ const navItems = [
   { href: '/dashboard/users', label: 'Users', icon: Users },
   { href: '/dashboard/groups', label: 'Groups', icon: Group },
   { href: '/dashboard/send-message', label: 'Send Message/Media', icon: Send },
-  { href: '/dashboard/chat-user-info', label: 'Chat/User Info', icon: Info }, 
+  { href: '/dashboard/chat-user-info', label: 'Chat/User Info', icon: Info },
   { href: '/dashboard/bot-settings', label: 'Bot Settings', icon: Wrench },
 ];
+
+// Pre-calculate tooltip props to ensure stable object identity for each menu item
+const navMenuItems = navItemsData.map(item => ({
+  ...item,
+  tooltipProps: { children: item.label, className: "text-xs" }
+}));
 
 export function NavMenu() {
   const pathname = usePathname();
@@ -42,12 +47,12 @@ export function NavMenu() {
     <SidebarMenu>
       <SidebarGroup>
         <SidebarGroupLabel>Menu</SidebarGroupLabel>
-        {navItems.map((item) => (
+        {navMenuItems.map((item) => ( // Iterate over navMenuItems
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton
               asChild
               isActive={pathname.startsWith(item.href)}
-              tooltip={{ children: item.label, className: "text-xs" }}
+              tooltip={item.tooltipProps} // Use the pre-calculated stable tooltipProps
               className="justify-start"
             >
               <Link href={item.href}>
