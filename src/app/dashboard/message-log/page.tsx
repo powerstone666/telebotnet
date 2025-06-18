@@ -188,7 +188,8 @@ export default function MessageLogPage() {
         (msg.botUsername && msg.botUsername.toLowerCase().includes(lowerSearchTerm))
       );
     }
-    return filtered;
+    // Sort newest first
+    return filtered.sort((a, b) => (b.date || 0) - (a.date || 0));
   }, [messages, filterTokenIds, searchTerm]);
 
   // Callback for MessageRow to report its height
@@ -377,6 +378,9 @@ export default function MessageLogPage() {
           </CardDescription>
         </div>
         <div className="flex flex-row items-center gap-2 self-start sm:self-center"> {/* Ensure horizontal layout on mobile for buttons */}
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()} title="Refresh message log">
+            <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Refresh
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm"> {/* Adjusted button size */}
