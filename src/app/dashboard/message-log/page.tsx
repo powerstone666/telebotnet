@@ -92,15 +92,15 @@ export default function MessageLogPage() {
       console.warn("SSE: Received incomplete message, skipping:", newMessage);
       return;
     }
+    // Ignore bot messages (do not store or notify)
+    if (newMessage.from?.is_bot) return;
     setMessages(prevMessages => {
       return [newMessage, ...prevMessages]; 
     });
-    
     const currentTokens = tokensRef.current;
     const botNameForToast = newMessage.botUsername || 
                           (newMessage.sourceTokenId ? currentTokens.find(t => t.id === newMessage.sourceTokenId)?.botInfo?.username : null) || 
                           'Bot';
-    
     toast({ 
       title: "New Message Received", 
       description: `From: ${newMessage.from?.username || newMessage.from?.first_name || 'Unknown'} via ${botNameForToast}` 
