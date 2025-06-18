@@ -388,9 +388,10 @@ export default function MessageLogPage() {
               }, 300); // show spinner for 300ms before reload
             }}
             title="Refresh message log"
-            className="p-1 h-8 w-8"
+            className="p-1 h-8 w-8 flex items-center gap-1"
           >
             <Loader2 className={`h-4 w-4${isRefreshing ? ' animate-spin' : ''}`} />
+            <span className="text-xs font-medium">Refresh</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
