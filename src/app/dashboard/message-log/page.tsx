@@ -72,7 +72,7 @@ export default function MessageLogPage() {
   const [hasMounted, setHasMounted] = useState(false);
   const [filterTokenIds, setFilterTokenIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const tokensRef = useRef(tokens);
   useEffect(() => {
@@ -378,8 +378,19 @@ export default function MessageLogPage() {
           </CardDescription>
         </div>
         <div className="flex flex-row items-center gap-2 self-start sm:self-center"> {/* Ensure horizontal layout on mobile for buttons */}
-          <Button variant="outline" size="sm" onClick={() => window.location.reload()} title="Refresh message log">
-            <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Refresh
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              setIsRefreshing(true);
+              setTimeout(() => {
+                window.location.reload();
+              }, 300); // show spinner for 300ms before reload
+            }}
+            title="Refresh message log"
+            className="p-1 h-8 w-8"
+          >
+            <Loader2 className={`h-4 w-4${isRefreshing ? ' animate-spin' : ''}`} />
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
