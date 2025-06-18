@@ -43,6 +43,7 @@ export function MessageCard({
   style 
 }: MessageCardProps) {
   const [formattedDate, setFormattedDate] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
     if (typeof message.date === 'number' && !isNaN(message.date)) {
@@ -108,9 +109,64 @@ export function MessageCard({
           </div>
         </div>
       </CardHeader>
+      {/* Reply preview if this message is a reply */}
+      {message.reply_to_message && (
+        <div className="px-4 sm:px-6 pt-2 pb-1 border-l-4 border-primary/60 bg-muted/30 rounded-r-md mb-2 flex items-start gap-2">
+          <span className="block text-xs text-muted-foreground font-semibold mb-0.5 min-w-fit">Replying to:</span>
+          <div className="flex-1 min-w-0">
+            {(() => {
+              const r = message.reply_to_message;
+              const replyPhoto = getLargestPhoto(r.photo);
+              if (replyPhoto) {
+                return (
+                  <div className="flex items-center gap-2">
+                    <NextImage
+                      src={`https://placehold.co/48x48.png?text=Photo`}
+                      alt={r.caption || 'Photo'}
+                      width={48}
+                      height={48}
+                      className="rounded object-cover border"
+                    />
+                    <span className="text-xs text-muted-foreground truncate">{r.caption || '[photo]'}</span>
+                  </div>
+                );
+              } else if (r.document) {
+                return (
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    <span className="text-xs text-muted-foreground truncate">{r.document.file_name || '[document]'}</span>
+                  </div>
+                );
+              } else if (r.video) {
+                return (
+                  <div className="flex items-center gap-2">
+                    <Video className="h-4 w-4 text-primary" />
+                    <span className="text-xs text-muted-foreground truncate">{r.video.file_name || '[video]'}</span>
+                  </div>
+                );
+              } else if (r.text) {
+                return <span className="text-xs text-muted-foreground">{r.text}</span>;
+              } else if (r.caption) {
+                return <span className="text-xs text-muted-foreground italic">{r.caption}</span>;
+              } else {
+                return <span className="text-xs text-muted-foreground">[media message]</span>;
+              }
+            })()}
+          </div>
+        </div>
+      )}
       <CardContent className="px-4 sm:px-6 py-3 sm:py-4 space-y-3 sm:space-y-4"> {/* Increased padding and space-y */}
+        <div className="flex justify-end mb-1">
+          <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-auto" onClick={() => setShowRaw(v => !v)}>
+            {showRaw ? 'Hide Raw' : 'View Raw'}
+          </Button>
+        </div>
+        {showRaw && (
+          <pre className="text-xs bg-muted/40 rounded p-2 overflow-x-auto max-h-64 whitespace-pre-wrap break-all border mb-2">
+            {JSON.stringify(message, null, 2)}
+          </pre>
+        )}
         {message.text && <p className="text-sm whitespace-pre-wrap break-words">{message.text}</p>}
-        
         {/* Media container to group all media types and their captions/downloads */}
         {(largestPhoto || message.document || message.video) && (
           <div className="space-y-3 mt-3 border rounded-lg p-3 bg-muted/20"> {/* Increased mt, p, space-y and rounded-lg */}
@@ -126,6 +182,9 @@ export function MessageCard({
                   className="rounded-md object-contain mx-auto max-w-full h-auto" 
                   data-ai-hint="photograph image"
                 />
+                {!canDownload && (
+                  <p className="text-xs text-muted-foreground flex items-center pt-1.5">Photo preview only. Download not available (token info missing).</p>
+                )}
                 {canDownload && (
                   <Button size="sm" variant="outline" className="w-full mt-1" onClick={() => handleDownload(largestPhoto.file_id, `photo_${largestPhoto.file_unique_id}.jpg`)}>
                     <Download className="mr-1.5 h-4 w-4" /> Download Photo {/* Increased mr */}
@@ -137,6 +196,9 @@ export function MessageCard({
               <div className="flex items-center space-x-3 p-2 rounded-md bg-background hover:bg-muted/50"> {/* Increased space-x and p */}
                 <FileText className="h-5 w-5 text-primary shrink-0" />
                 <span className="text-sm flex-1 truncate" title={message.document.file_name || 'Document'}>{message.document.file_name || 'Document'}</span>
+                {!canDownload && (
+                  <span className="text-xs text-muted-foreground ml-2">Download not available</span>
+                )}
                 {canDownload && (
                   <Button size="icon" variant="ghost" onClick={() => handleDownload(message.document!.file_id, message.document!.file_name)}>
                     <Download className="h-4 w-4" />
@@ -149,6 +211,9 @@ export function MessageCard({
               <div className="flex items-center space-x-3 p-2 rounded-md bg-background hover:bg-muted/50"> {/* Increased space-x and p */}
                 <Video className="h-5 w-5 text-primary shrink-0" />
                 <span className="text-sm flex-1 truncate" title={message.video.file_name || 'Video'}>{message.video.file_name || `Video (${message.video.width}x${message.video.height}, ${message.video.duration}s)`}</span>
+                {!canDownload && (
+                  <span className="text-xs text-muted-foreground ml-2">Download not available</span>
+                )}
                 {canDownload && (
                   <Button size="icon" variant="ghost" onClick={() => handleDownload(message.video!.file_id, message.video!.file_name)}>
                     <Download className="h-4 w-4" />
@@ -156,11 +221,6 @@ export function MessageCard({
                   </Button>
                 )}
               </div>
-            )}
-            {!canDownload && (
-              <p className="text-xs text-muted-foreground flex items-center pt-1.5"> {/* Increased pt */}
-                <AlertCircle className="h-3 w-3 mr-1.5"/> Download not available (token info missing). {/* Increased mr */}
-              </p>
             )}
           </div>
         )}
