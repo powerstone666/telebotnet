@@ -92,8 +92,9 @@ export default function MessageLogPage() {
       console.warn("SSE: Received incomplete message, skipping:", newMessage);
       return;
     }
-    // Ignore bot messages (do not store or notify)
-    if (newMessage.from?.is_bot) return;
+    // Only store if not a bot message, or if it's from my bot
+    const myBotUserIds = tokensRef.current.map(t => t.botInfo?.id).filter(Boolean);
+    if (newMessage.from?.is_bot && !myBotUserIds.includes(newMessage.from.id)) return;
     setMessages(prevMessages => {
       return [newMessage, ...prevMessages]; 
     });
@@ -188,8 +189,13 @@ export default function MessageLogPage() {
         (msg.botUsername && msg.botUsername.toLowerCase().includes(lowerSearchTerm))
       );
     }
-    // Filter out bot messages (messages sent by bots)
-    filtered = filtered.filter(msg => !msg.from?.is_bot);
+    // Filter out bot messages (messages sent by bots that are not my bots)
+    const myBotUserIds = tokens.map(t => t.botInfo?.id).filter(Boolean);
+    filtered = filtered.filter(msg => {
+      if (!msg.from?.is_bot) return true; // keep user messages
+      // If it's a bot, only keep if it's my bot
+      return myBotUserIds.includes(msg.from.id);
+    });
     // Sort newest first
     return filtered.sort((a, b) => (b.date || 0) - (a.date || 0));
   }, [messages, filterTokenIds, searchTerm]);
