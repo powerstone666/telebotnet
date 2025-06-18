@@ -188,6 +188,8 @@ export default function MessageLogPage() {
         (msg.botUsername && msg.botUsername.toLowerCase().includes(lowerSearchTerm))
       );
     }
+    // Filter out bot messages (messages sent by bots)
+    filtered = filtered.filter(msg => !msg.from?.is_bot);
     // Sort newest first
     return filtered.sort((a, b) => (b.date || 0) - (a.date || 0));
   }, [messages, filterTokenIds, searchTerm]);
@@ -380,7 +382,7 @@ export default function MessageLogPage() {
         <div className="flex flex-row items-center gap-2 self-start sm:self-center"> {/* Ensure horizontal layout on mobile for buttons */}
           <Button
             variant="ghost"
-            size="icon"
+            size="sm"
             onClick={() => {
               setIsRefreshing(true);
               setTimeout(() => {
@@ -388,7 +390,7 @@ export default function MessageLogPage() {
               }, 300); // show spinner for 300ms before reload
             }}
             title="Refresh message log"
-            className="p-1 h-8 w-8 flex items-center gap-1"
+            className="p-1 h-8 flex items-center gap-1"
           >
             <Loader2 className={`h-4 w-4${isRefreshing ? ' animate-spin' : ''}`} />
             <span className="text-xs font-medium">Refresh</span>
